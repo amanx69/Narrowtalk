@@ -1,0 +1,9 @@
+venv
+.env
+
+idea.txt
+
+
+db.sqlite3
+__pycache__
+migrations
