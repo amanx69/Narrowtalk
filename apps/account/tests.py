@@ -1,9 +1,12 @@
-from rest_framework.test import APITestCase
+from django.test import TestCase
+from django.utils import timezone
+from rest_framework.test import APIClient, APITestCase
 from rest_framework import status
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-
+    
+from  apps.account.models import Emailverifiction
 
 user=get_user_model()
 
@@ -20,6 +23,19 @@ class SignUpTestCase(APITestCase):
             "password": "Test@1234",
           
         }   
+        
+    def test_rate_limit(self):
+        for _ in range(5):
+            
+            response = self.client.post(self.url, self.valid_data)
+            self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+       
+
+            
+        rspoonse= self.client.post(self.url,self.valid_data)
+        self.assertEqual(rspoonse.status_code,status.HTTP_403_FORBIDDEN)
+            
+            
     def test_signup(self):
         
         response= self.client.post(self.url,self.valid_data)
@@ -68,7 +84,19 @@ class Logintest(APITestCase):
         self.user = user.objects.create_user(
             email=self.email, password=self.password, is_verify=True
         )
+        
+        ##! test rate limit
 
+    def test_rate_limit(self):
+        for _ in range(5):
+        
+            res= self.client.post(self.url, self.valid_data)
+            self.assertIn(res.status_code, [status.HTTP_200_OK])
+        response = self.client.post(self.url, self.valid_data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        
+        
+        
     def test_login_success(self):
         response = self.client.post(self.url, self.valid_data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -119,5 +147,54 @@ class Logintest(APITestCase):
     def test_login_empty_data(self):
         response = self.client.post(self.url, {})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+        
+
     
-    
+
+class VerifyEmailTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = user.objects.create_user(email="test@example.com", password="Pass1234!")
+        self.token = "dummy_token"
+        Emailverifiction.objects.create(
+            user=self.user,
+            token_hash=self.token,
+            purpose="VERIFY",
+            used_it=False,
+        )
+
+    def test_verify_email_success(self):
+        url = reverse("email-verify", args=[self.token])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 200)
+        
+    def test_verify_email_expired_token(self):
+        expired_token = Emailverifiction.objects.create(
+            user=self.user,
+            token_hash="expired_token",
+            purpose="VERIFY",
+            used_it=False,
+        )
+        expired_token.created_at = timezone.now() - timezone.timedelta(hours=2)
+        expired_token.save()
+
+        url = reverse("email-verify", args=[expired_token.token_hash])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("your token is expire resent again", response.data["message"])
+        
+    def test_verify_email_used_token(self):
+        
+        Emailverifiction.objects.filter(token_hash=self.token).update(used_it=True)
+        url = reverse("email-verify", args=[self.token])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("your token is already used", response.data["message"])
+        
+        
+    def test_verify_email_invalid_token(self):
+        url = reverse("email-verify", args=["invalid_token"])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+        
