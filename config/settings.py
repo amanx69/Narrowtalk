@@ -32,21 +32,36 @@ ALLOWED_HOSTS = ["*"]
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'cloudinary_storage',
     'django.contrib.staticfiles',
     'apps.account',
+    "apps.Profile",
+    'apps.rooms',
+    'apps.post',
+    'apps.notification',
+    'apps.Feed',
     #! third  party
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'rest_framework',
     'django_celery_results',
+    "channels",
+    "corsheaders",
+    'silk',
+    'django_filters',
+    'cloudinary',
+    
   
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -54,8 +69,14 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    #'silk.middleware.SilkyMiddleware',
+  
 ]
 
+#TODO remove in prod
+SILKY_AUTHENTICATION = True
+SILKY_AUTHORISATION = True
+SILKY_PYTHON_PROFILER = False
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
@@ -73,9 +94,19 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
 
 
+
+ASGI_APPLICATION = 'config.asgi.application'
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
@@ -83,7 +114,23 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+          'OPTIONS': {
+            'timeout': 20,
+        }
     }
+}
+
+REST_FRAMEWORK = {
+    'DEFAULT_PARSER_CLASSES': [
+            'rest_framework.parsers.JSONParser',
+            'rest_framework.parsers.FormParser',
+            'rest_framework.parsers.MultiPartParser',
+        ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend']
+    
 }
 
 
@@ -127,14 +174,7 @@ AUTH_USER_MODEL= "account.User"
 
 
 
-REST_FRAMEWORK = {
 
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
-  
-}
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
@@ -148,3 +188,53 @@ EMAIL_USE_TLS = True
 EMAIL_PORT = config('email_port')
 EMAIL_HOST_USER = config('email_host')
 EMAIL_HOST_PASSWORD = config('email_pass')
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend' #TODO remove in prod
+
+
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=5),#TODO CHABGE IN PRO
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+}
+
+
+LIVEKIT_URL=config('LIVEKIT_URL')
+LIVEKIT_API_KEY=config('LIVEKIT_API_KEY')
+LIVEKIT_API_SECRET=config('LIVEKIT_API_SECRET')
+
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": f"redis:{config('Redis_caches')}",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    }
+}
+
+
+CELERY_BEAT_SCHEDULE = {
+    'recompute-best-ideas': {
+        'task': 'Feed.api.task.recompute_best_ideas_cache',
+        'schedule': 600.0,  
+    },
+}
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': config('CLOUDINARY_CLOUD_NAME'),
+    'API_KEY': config('CLOUDINARY_API_KEY'),
+    'API_SECRET': config('CLOUDINARY_API_SECRET'),
+}
+
+STORAGES = {
+    "default": {
+        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}

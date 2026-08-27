@@ -23,10 +23,6 @@ class UserManage(BaseUserManager):
         extra_fields.setdefault("is_active", True)
         return self.create_user(email, password, **extra_fields)
 
-
-
-
-
 class User(AbstractBaseUser,PermissionsMixin):
     
     id= models.UUIDField(primary_key=True, unique=True,editable=False,default=uuid.uuid4)
@@ -34,6 +30,7 @@ class User(AbstractBaseUser,PermissionsMixin):
     is_staff= models.BooleanField(default=False)
     is_active= models.BooleanField(default=True)
     is_verify= models.BooleanField(default=False)
+    in_project_count=models.PositiveIntegerField(default=0) 
     created_at= models.DateTimeField(auto_now_add=True)
     
     USERNAME_FIELD = "email"
@@ -44,6 +41,16 @@ class User(AbstractBaseUser,PermissionsMixin):
     
     def __str__(self):
         return self.email
+
+    @property
+    def username(self):
+        try:
+            profile = getattr(self, "user_profile", None)
+            if profile and profile.username:
+                return profile.username
+        except Exception:
+            pass
+        return self.email.split("@")[0] if self.email else ""
     
     
 
@@ -61,8 +68,6 @@ class Emailverifiction(models.Model):
     purpose= models.CharField(choices=purpose_,null=False,blank=False)
     created_at= models.DateTimeField(auto_now_add=True)
     used_it=models.BooleanField(default=False)
-    expire_at= models.BooleanField(default=False)
-    
     
     def __str__(self):
         return f"{self.user.email} to {self.token_hash}"
@@ -71,7 +76,7 @@ class Emailverifiction(models.Model):
     def is_expire(self):
         
         from django.utils import timezone
-        return (timezone.now() - self.created_at).seconds > 3600 
+        return (timezone.now() - self.created_at).total_seconds() > 3600
     
     
     

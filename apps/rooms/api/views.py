@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import status
@@ -17,6 +18,7 @@ from django.utils.decorators import method_decorator
 from django_ratelimit.decorators import ratelimit
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.utils.decorators import method_decorator
 
 User=get_user_model()
 
@@ -40,12 +42,11 @@ class RoomViewset(ModelViewSet):
         obj = super().get_object()
         if obj.owner != self.request.user:
             raise PermissionDenied("You can only modify your own data.")
-        return obj
+
     def perform_create(self, serializer):
         return serializer.save(owner=self.request.user)
     def get_queryset(self):  # type: ignore[override]
         return Room.objects.filter(owner=self.request.user)
-    
     def partial_update(self, request, *args, **kwargs):
         obj= self.get_object()
         serializer=self.get_serializer(obj,data=request.data, partial=True)
@@ -239,7 +240,7 @@ class VoiceTokenView(APIView):
         
         
 
-
+#TODO reove it later 
 class ShowRoomInHomeScreen(APIView):
     permission_classes=[IsAuthenticated]
     def get(self,request):
@@ -257,38 +258,48 @@ class ShowRoomInHomeScreen(APIView):
 #! get link in room
 
 class GiveLinkTORoom(APIView):
-    
-     def get(self, request, room_id):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id):
         Target_room = get_object_or_404(Room, id=room_id)
+
+        if Target_room.owner != request.user:
+            return Response({"message": "Only the room owner can generate a link."}, status=status.HTTP_403_FORBIDDEN)
+
+        link_key = f"room_link_{room_id}"
+        cached_link = cache.get(link_key)
+        if cached_link:
+            return Response({"link": cached_link})
+
         RoomLink = RoomInviteLink.objects.filter(
             room=Target_room, is_active=True
         ).order_by('-created_at').first()
 
         if not RoomLink:
-            return Response({"message": "no active invite link for this room"}, status=404)
+            return Response({"message": "no active invite link for this room"}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response({
-            "link": f"http://127.0.0.1:8000/api/v1/rooms/join_with_link/{RoomLink.token}"#TODO remove in production add actyal and hide it
-        })
+        link = f"http://127.0.0.1:8000/api/v1/rooms/join_with_link/{RoomLink.token}"
+        cache.set(link_key, link, timeout=300)
+        return Response({"link": link})
      
       
 #! join with room link 
 class JoinRoomWithLink(APIView):
     permission_classes=[IsAuthenticated]
-    @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='10/m',method=['POST']))
     def post(self,request,Room_link):
-        
-        roomlink= get_object_or_404(RoomInviteLink,token=Room_link)
-        if roomlink.is_valid():
-            return Response({"message":"link is expire you can't join"},status.HTTP_400_BAD_REQUEST)
-        if self.request.user in  roomlink.room.participants.all():
-            return Response({"message":"you are already in room"},status.HTTP_202_ACCEPTED)
-        
+
+        roomlink = get_object_or_404(RoomInviteLink, token=Room_link)
+        if not roomlink.is_valid():
+            return Response({"message": "link is expired or disabled; you can't join"}, status.HTTP_400_BAD_REQUEST)
+        if self.request.user in roomlink.room.participants.all():
+            return Response({"message": "you are already in room"}, status.HTTP_202_ACCEPTED)
+
         roomlink.room.participants.add(self.request.user)
-        roomlink.use_count +=1
+        roomlink.use_count += 1
         roomlink.save(update_fields=['use_count'])
         broadcast_room_event(roomlink.room.id, {"type": "room_participants_update"})
-        return Response({"message":"you are join the room"},status.HTTP_200_OK)
+        return Response({"message": "you are join the room"}, status.HTTP_200_OK)
         
 
 
@@ -297,17 +308,20 @@ class JoinRoomWithLink(APIView):
 
 
 class ExpireRoomLink(APIView):
-    
-      def post(self, request, room_id):
-            Target_room = get_object_or_404(Room, id=room_id)
-            RoomLink = RoomInviteLink.objects.get(
-                room=Target_room, 
-            )
-            if RoomLink.is_active !=True:
-                return Response({"message":"Link is already desible"},status.HTTP_400_BAD_REQUEST)
-            if Target_room.owner != self.request.user:
-                return Response({"message":"only Room owner can performe this task"},status.HTTP_400_BAD_REQUEST)
-            RoomLink.is_active=False
-            RoomLink.save(update_fields=['is_active'])
-            return Response({"message":f"{Target_room.id} link is disable"},status.HTTP_200_OK)
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id):
+        Target_room = get_object_or_404(Room, id=room_id)
+        if Target_room.owner != self.request.user:
+            return Response({"message": "only Room owner can performe this task"}, status.HTTP_403_FORBIDDEN)
+
+        RoomLink = RoomInviteLink.objects.filter(room=Target_room).order_by('-created_at').first()
+        if not RoomLink:
+            return Response({"message": "No invite link found for this room"}, status.HTTP_404_NOT_FOUND)
+        if RoomLink.is_active is not True:
+            return Response({"message": "Link is already disabled"}, status.HTTP_400_BAD_REQUEST)
+
+        RoomLink.is_active = False
+        RoomLink.save(update_fields=['is_active'])
+        return Response({"message": f"{Target_room.id} link is disable"}, status.HTTP_200_OK)
     

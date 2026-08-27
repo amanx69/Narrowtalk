@@ -5,6 +5,7 @@ from ..models import Emailverifiction
 from .task import send_verification_email
 from django.contrib.auth import authenticate
 User= get_user_model()
+
 class SignUpSerializer(serializers.ModelSerializer):
     
     class Meta:
@@ -18,14 +19,17 @@ class SignUpSerializer(serializers.ModelSerializer):
             password=validated_data['password'],
             
         )
-        send_verification_email.delay(id=user.id)
+        send_verification_email.delay(id=str(user.id))
             
         return user
 
     def validate_email(self,value):
         if User.objects.filter(email=value):
             raise serializers.ValidationError("email already exites")
+        
         return value
+     
+    
     def validate_password(self,value):
         validate_password(value)
         return value
