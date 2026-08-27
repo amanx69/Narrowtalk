@@ -10,6 +10,7 @@ from ..models import Emailverifiction
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.core.exceptions import ValidationError
 
 User=get_user_model()
 #! signup
@@ -19,33 +20,26 @@ class SignUp(generics.CreateAPIView):
     serializer_class= SignUpSerializer
     @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def create(self, request, *args, **kwargs):
-        print(*args, **kwargs)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        if not user.is_verify:
-            return Response({"message": "Please verify your email before logging in."}, status=status.HTTP_201_CREATED)
-        refresh = RefreshToken.for_user(user)
         return Response(
-            {"message": "User registered successfully.", "user": user.id,
-             "access": str(refresh.access_token),
-            "refresh": str(refresh),
-             
+            {"message": "User registered successfully verify to continue", "user": user.id,
              },
             status=status.HTTP_201_CREATED
         )
 #! Login
 
 class LoginView(APIView):
-    @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
+    permission_classes=[permissions.AllowAny]
+    #@method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request):
         
         serlizer= LoginSerlizer(data=request.data)
-        if serlizer.is_valid(raise_exception=True):
-            user= serlizer.validated_data['user']
-            refresh = RefreshToken.for_user(user)
-            
-            return Response({
+        serlizer.is_valid(raise_exception=True)
+        user= serlizer.validated_data['user']
+        refresh = RefreshToken.for_user(user)
+        return Response({
                 "message": "Login successful",
                 "tokens": {
                     "access": str(refresh.access_token),
@@ -53,16 +47,13 @@ class LoginView(APIView):
                 }
             }, status=status.HTTP_200_OK)
             
-        return Response({
-            "message":"somthing went wrong"
-            },status=status.HTTP_400_BAD_REQUEST)
-
-        
+      
 
 
 
 #! verify
 class VerifyEmail(APIView):
+    permission_classes=[permissions.AllowAny]
     @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request,token):
         with transaction.atomic():
@@ -75,19 +66,23 @@ class VerifyEmail(APIView):
                 return Response({
                     "message":"your token is expire resent again",
                 },status=status.HTTP_400_BAD_REQUEST)
-
             EmailToken.user.is_verify = True
             EmailToken.used_it = True
             EmailToken.user.save(update_fields=["is_verify"])
             EmailToken.save(update_fields=["used_it"])
+            refresh = RefreshToken.for_user(EmailToken.user)
 
         return Response({
-            "message":"email verify compleated"
+            "message":"email verify compleated",
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            
         },status=status.HTTP_200_OK )
         
         
 #! forget password endpoint
 class SendForgetPassworEmaildView(APIView):
+    permission_classes=[permissions.AllowAny]
     @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request):
         email= request.data.get('email')
@@ -110,6 +105,7 @@ class SendForgetPassworEmaildView(APIView):
         
 #! reset password endpoint
 class ResetPasswordView(APIView):
+    permission_classes=[permissions.AllowAny]
     @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request,token):
         with transaction.atomic():
@@ -122,12 +118,25 @@ class ResetPasswordView(APIView):
                 return Response({
                     "message":"your token is expire resent again",
                 },status=status.HTTP_400_BAD_REQUEST)
+                
+            if EmailToken.user.is_verify == False:
+                return Response({
+                    "message":"Before reset password you need to verify your email"
+                },status=status.HTTP_400_BAD_REQUEST)  
 
             password = request.data.get('password')
             if not password:
                 return Response({
                     "message":"password is required"
                 },status=status.HTTP_400_BAD_REQUEST)
+            from django.contrib.auth.password_validation import validate_password
+
+            try:
+                validate_password(password, EmailToken.user)
+            except ValidationError as e:
+                return Response({
+                    "message": e.messages[0] if e.messages else "password is invalid"
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             EmailToken.user.set_password(password)
             EmailToken.user.save(update_fields=["password"])
@@ -152,4 +161,4 @@ class LogoutView(APIView):
             token.blacklist()
             return Response({"message": "Logout successful"}, status=status.HTTP_205_RESET_CONTENT)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "somthing went wrong"}, status=status.HTTP_400_BAD_REQUEST)
