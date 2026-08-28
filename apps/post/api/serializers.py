@@ -49,12 +49,13 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
     # accept list of skill objects {"name": "...", "category": "..."}
     required_skills = SkillSerializer(
         many=True,
-        write_only=True
+        write_only=True,
+        required=False
     )
 
     class Meta:
         model = RoleNeeded
-        fields = ("title", "description", "slots_available", "required_skills")
+        fields = ("title", "description", "slots_available", "required_skills", "is_open")
 
     def validate_title(self, value):
         """Validate role title is not empty and reasonable length."""
@@ -81,16 +82,17 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
         return value
 
     def validate_required_skills(self, value):
+        if value is None:
+            return value
         if not value:
             raise serializers.ValidationError("At least one skill is required.")
         if len(value) > 10:
             raise serializers.ValidationError("Maximum 10 skills allowed per role.")
-        
-        
+
         for skill in value:
             name = skill.get("name", "").strip()
             category = skill.get("category", "").strip()
-            
+
             if not name:
                 raise serializers.ValidationError("Skill name cannot be empty.")
             if not category:
@@ -99,7 +101,7 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Skill name must not exceed 100 characters.")
             if len(category) > 100:
                 raise serializers.ValidationError("Skill category must not exceed 100 characters.")
-        
+
         return value
 
     def create(self, validated_data):
@@ -118,7 +120,27 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
     
     
     def update(self, instance, validated_data):
-        return super().update(instance, **validated_data)
+        skills_data = validated_data.pop("required_skills", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        if skills_data is not None:
+            skill_objs = []
+            for skill in skills_data:
+                name = skill.get("name", "").strip()
+                category = skill.get("category", "").strip()
+                if name and category:
+                    skill_obj, _ = Skill.objects.get_or_create(name=name, category=category)
+                    skill_objs.append(skill_obj)
+            if skill_objs:
+                instance.required_skills.set(skill_objs)
+            else:
+                instance.required_skills.clear()
+
+        return instance
      
      
      
