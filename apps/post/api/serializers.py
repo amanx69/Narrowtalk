@@ -10,7 +10,7 @@ from apps.Profile.api.serializer import SkillSerializer ,MemebrProfileSerializer
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = ("id","title", "description", "stage", "created_at")
+        fields = ("id","title", "description", "stage", "created_at",'like_count','comment_count','save_count')
 
     def validate_title(self, value):
         if not value or not value.strip():
@@ -115,6 +115,10 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
         if skill_objs:
             role.required_skills.set(skill_objs)
         return role
+    
+    
+    def update(self, instance, validated_data):
+        return super().update(instance, **validated_data)
      
      
      
@@ -187,7 +191,7 @@ class AppliedApplictionSerializer(serializers.ModelSerializer):
         fields=('message','apply_role_purpose','status','created_at','github_link','portfolio_link',)
         
 class ProjectJoinSerializer(serializers.ModelSerializer):
-    
+    project=ProjectSerializer(read_only=True)
     class Meta:
-        model=Project
-        fields = ("id","title", "description", "stage", "created_at",)
+        model=Membership
+        fields = ('is_active','role_title','joined_at','project')

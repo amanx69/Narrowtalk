@@ -20,6 +20,7 @@ from .serializers import (
     MemebrSerializer,
     GetapplictionSerializar,
     AppliedApplictionSerializer,
+    ProjectJoinSerializer,
     
     
     )
@@ -44,7 +45,6 @@ class ProjectView(ModelViewSet):
     def get_queryset(self):
         return Project.objects.filter(owner=self.request.user,is_active=True)
 
-    @method_decorator(ratelimit(key='user', rate='15/m', method='POST',block=True),)
     def perform_create(self, serializer):
             project = serializer.save(owner=self.request.user)
             _safe_notify(notify_post_created, project)
@@ -69,10 +69,15 @@ class ProjectView(ModelViewSet):
     @method_decorator(ratelimit(key='user', rate='30/m', method=['GET','POST'],block=True),)
     def roles(self, request, pk=None): #TODO role not created fix the bug
         project = self.get_object()
-        #TODO make the single role fatch
+       
         if request.method == "GET":
             roles = project.roles.filter(is_open=True)
             return Response(GetJobRoleSerializer(roles, many=True).data)
+    #TODO make role edit endpoint
+        if request.method =='PATCH':
+            
+            pass
+            
 
         if request.method == "POST":
             if project.owner != request.user:
@@ -82,9 +87,6 @@ class ProjectView(ModelViewSet):
             serializer.is_valid(raise_exception=True)
             with transaction.atomic():
                 role = serializer.save(project=project)
-                Project.objects.filter(id=project.id).update(
-                    application_count=('application_count')+1
-                )
                 _safe_notify(notify_new_role_added, role)
             return Response(GetJobRoleSerializer(role).data, status=status.HTTP_201_CREATED)
 
@@ -113,7 +115,8 @@ class ProjectView(ModelViewSet):
             "data":ser.data
         },status.HTTP_200_OK)
         
-    #TODO make role edit endpoint
+    #TODO mak single role fatch
+    
         
         
 
@@ -133,19 +136,19 @@ class AccpectAppliction(APIView):
 
         if appliction.status == Application.Status.ACCEPTED:
             return Response({"message": "Already accepted this application"}, status=status.HTTP_400_BAD_REQUEST)
-
-        appliction.status = Application.Status.ACCEPTED
-        Membership.objects.get_or_create(
-            user=appliction.user,
-            project=appliction.role.project,
-            defaults={"role_title": appliction.apply_role_purpose or appliction.role.title, "is_active": True}
-        )
-        cache.delete(f'project_memeber{appliction.role.project.id}')
-        cache.delete(f'single_appliction{appliction_id}')
-        
-        appliction.save(update_fields=["status"])
-        _safe_notify(notify_application_accepted, appliction)
-        _safe_notify(notify_new_member, appliction.role.project, appliction.user)
+        with transaction.atomic():
+            appliction.status = Application.Status.ACCEPTED
+            Membership.objects.get_or_create(
+                user=appliction.user,
+                project=appliction.role.project,
+                defaults={"role_title": appliction.apply_role_purpose or appliction.role.title, "is_active": True}
+            )
+            cache.delete(f'project_memeber{appliction.role.project.id}')
+            cache.delete(f'single_appliction{appliction_id}')
+            
+            appliction.save(update_fields=["status"])
+            _safe_notify(notify_application_accepted, appliction)
+            _safe_notify(notify_new_member, appliction.role.project, appliction.user)
         return Response({"message": f"{appliction.user.username} application accepted for post {appliction.role.project.title}"})
 
 #! rejected appliction
@@ -172,7 +175,6 @@ class RoleApplictionPendingListView(APIView):
     
     def get(self,request,role_id):
         role=get_object_or_404(RoleNeeded,id=role_id)
-        print(role.title)
         if role.project.owner!= request.user:
             return Response({
                 "message":"only owner see pending list"
@@ -185,7 +187,6 @@ class RoleApplictionAccpectedListView(APIView):
     
     def get(self,request,role_id):
         role=get_object_or_404(RoleNeeded,id=role_id)
-        print(role.title)
         if role.project.owner!= request.user:
             return Response({
                 "message":"only owner see pending list"
@@ -199,7 +200,6 @@ class RoleApplictionRejectedListView(APIView):
     
     def get(self,request,role_id):
         role=get_object_or_404(RoleNeeded,id=role_id)
-        print(role.title)
         if role.project.owner!= request.user:
             return Response({
                 "message":"only owner see pending list"
@@ -251,8 +251,8 @@ class WithdrawAppliction(APIView):
     def post(self, request, appliction_id):
         appliction = get_object_or_404(Application, id=appliction_id, user=request.user)
         with transaction.atomic():
-            Project.objects.filter(id=appliction.role.project.id).update(
-            application_count=('application_count')-1)          
+            RoleNeeded.objects.filter(id=appliction.role.id).update(
+            application_count=F('application_count')-1)          
             _safe_notify(notify_application_withdrawn, appliction)
             appliction.delete()
         return Response({"message": "Application withdrawn successfully."})
@@ -271,8 +271,11 @@ class ApplictionView(APIView):
 
         ser = ApplictionSerializer(data=request.data, context={'request': request})
         ser.is_valid(raise_exception=True)
-        appliction = ser.save(role=role)
-        _safe_notify(notify_application_received, appliction)
+        with transaction.atomic():
+            RoleNeeded.objects.filter(id=roleNeed_id).update(
+            application_count=F('application_count')+1)  
+            appliction = ser.save(role=role)
+            _safe_notify(notify_application_received, appliction)
         return Response({"message": f"Applied successfully for {role.title} in {role.project.title}"}, status=status.HTTP_201_CREATED)
     
 #! this class give single and list of appliction for applide user
@@ -294,5 +297,13 @@ class AppliedUserAccpetedApplictionView(APIView):
         serializer=AppliedApplictionSerializer(data,many=True)
         return Response(serializer.data)
 
-#TODO list of join projects
+
+class UserJoinProjectDetiles(APIView):
+    permission_classes=[IsAuthenticated]
+    def get(self, request):
+        project=Membership.objects.filter(user=request.user).select_related('project')
+        ser=ProjectJoinSerializer(project,many=True)
+        return Response(ser.data)
+        
+    
 

@@ -13,6 +13,7 @@ from .views import (
     SingleApplictionDetils,
     AppliedUserAccpetedApplictionView,
     AppliedUserApplicationDetailView,
+    UserJoinProjectDetiles
 )
 
 router = DefaultRouter()
@@ -33,6 +34,6 @@ urlpatterns += [
     path('applied/appliction/all/',AppliedUserApplicationDetailView.as_view(),name="applied_userappliction_list"),
     path('applied/appliction/<uuid:application_id>/',AppliedUserApplicationDetailView.as_view(),name="applied_userappliction_list"),
     path('applied/appliction/accpeted/',AppliedUserAccpetedApplictionView.as_view(),name="applied_user_accpeted_appliction"),
-
+    path('applied/joinproject/',UserJoinProjectDetiles.as_view(),name="join_project_list")
     
 ]

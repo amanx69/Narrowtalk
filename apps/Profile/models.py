@@ -20,6 +20,7 @@ class Skill(models.Model):
         return self.name
  
 class Profile(models.Model):
+    #TODO add id in uuids
     user=models.OneToOneField(User,models.CASCADE,related_name="user_profile")
     avter_image=models.ImageField(upload_to="avter/",null=True)
     bio= models.CharField(max_length=100,default="") #TODO set defult ""

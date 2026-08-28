@@ -17,7 +17,7 @@ class IsProjectOwner(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
                 return True
-        return obj.role.proejct.owner == request.user
+        return obj.role.project.owner == request.user
     
 
 class IsProjectMember(permissions.BasePermission):

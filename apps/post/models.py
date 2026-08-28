@@ -66,7 +66,8 @@ class RoleNeeded(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     role=models.TextField(max_length=40,blank=True)
     is_complete= models.BooleanField(default=False)
-    appliction_count=models.PositiveIntegerField(default=0)
+    application_count = models.PositiveIntegerField(default=0)
+
     def __str__(self):
         return f"{self.title} @ {self.project.title}"
 
@@ -134,3 +135,4 @@ class Membership(models.Model):
     
     
     
+  
