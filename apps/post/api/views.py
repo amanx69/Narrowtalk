@@ -9,6 +9,7 @@ from django_ratelimit.decorators import ratelimit
 import datetime
 from django.db import transaction
 from django.utils.decorators import method_decorator
+from apps.Profile.models import Profile
 from django.db.models import F
 from django.core.cache import cache
 from ..models import Project, Membership, RoleNeeded, Application
@@ -38,6 +39,7 @@ from apps.notification.api.service import (
     notify_member_left,
     notify_project_closed,
 )
+
 
 class ProjectView(ModelViewSet):
     permission_classes = [IsOwnerOrReadOnly, IsAuthenticated]
@@ -150,6 +152,10 @@ class AccpectAppliction(APIView):
                 project=appliction.role.project,
                 defaults={"role_title": appliction.apply_role_purpose or appliction.role.title, "is_active": True}
             )
+            #! if user add in project than update a profile project jion fields
+            Profile.objects.filter(id=appliction.user.user_profile.id).update(
+                project_joined=F('profile_joined')+1
+            )
             cache.delete(f'project_memeber{appliction.role.project.id}')
             cache.delete(f'single_appliction{appliction_id}')
             
@@ -171,7 +177,7 @@ class RejectAppliction(APIView):
             return Response({"message": "Already rejected this application"}, status=status.HTTP_400_BAD_REQUEST)
 
         appliction.status = Application.Status.REJECTED
-        appliction.save(update_fields=["status"])
+        appliction.save(update_fields=["status"])            
         cache.delete(f'single_appliction{appliction_id}')
         _safe_notify(notify_application_rejected, appliction)
         return Response({"message": f"{appliction.user.username} application rejected for post {appliction.role.project.title}"})
@@ -297,6 +303,7 @@ class AppliedUserApplicationDetailView(APIView):
         queryset = Application.objects.filter(user=request.user)
         serializer = AppliedApplictionSerializer(queryset, many=True)
         return Response(serializer.data)
+    #! this class give list of accpected appliction
 class AppliedUserAccpetedApplictionView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self,request):
@@ -304,7 +311,7 @@ class AppliedUserAccpetedApplictionView(APIView):
         serializer=AppliedApplictionSerializer(data,many=True)
         return Response(serializer.data)
 
-
+#! this class return all project where user join 
 class UserJoinProjectDetiles(APIView):
     permission_classes=[IsAuthenticated]
     def get(self, request):
@@ -314,3 +321,5 @@ class UserJoinProjectDetiles(APIView):
         
     
 
+#! make project owner also send request to join
+#! user show and accpected
