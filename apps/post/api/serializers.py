@@ -46,7 +46,6 @@ class GetJobRoleSerializer(serializers.ModelSerializer):
 
 #! this ser used for create a role
 class CreateJobRoleSerializer(serializers.ModelSerializer):
-    # accept list of skill objects {"name": "...", "category": "..."}
     required_skills = SkillSerializer(
         many=True,
         write_only=True,
@@ -81,28 +80,7 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Slots available cannot exceed 100.")
         return value
 
-    def validate_required_skills(self, value):
-        if value is None:
-            return value
-        if not value:
-            raise serializers.ValidationError("At least one skill is required.")
-        if len(value) > 10:
-            raise serializers.ValidationError("Maximum 10 skills allowed per role.")
-
-        for skill in value:
-            name = skill.get("name", "").strip()
-            category = skill.get("category", "").strip()
-
-            if not name:
-                raise serializers.ValidationError("Skill name cannot be empty.")
-            if not category:
-                raise serializers.ValidationError("Skill category cannot be empty.")
-            if len(name) > 100:
-                raise serializers.ValidationError("Skill name must not exceed 100 characters.")
-            if len(category) > 100:
-                raise serializers.ValidationError("Skill category must not exceed 100 characters.")
-
-        return value
+  
 
     def create(self, validated_data):
         skills_data = validated_data.pop("required_skills", [])
@@ -110,9 +88,8 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
         skill_objs = []
         for s in skills_data:
             name = s.get("name", "").strip()
-            category = s.get("category", "").strip()
-            if name and category:
-                skill, created = Skill.objects.get_or_create(name=name, category=category)
+            if name:
+                skill = Skill.objects.create(name=name)
                 skill_objs.append(skill)
         if skill_objs:
             role.required_skills.set(skill_objs)
@@ -131,9 +108,8 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
             skill_objs = []
             for skill in skills_data:
                 name = skill.get("name", "").strip()
-                category = skill.get("category", "").strip()
-                if name and category:
-                    skill_obj, _ = Skill.objects.get_or_create(name=name, category=category)
+                if name :
+                    skill_obj,_= Skill.objects.get_or_create(name=name)
                     skill_objs.append(skill_obj)
             if skill_objs:
                 instance.required_skills.set(skill_objs)
