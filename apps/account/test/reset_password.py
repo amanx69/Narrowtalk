@@ -23,7 +23,7 @@ class ResetPasswordTestCase(APITestCase):
             purpose='RESETPASSWORD',
             
         )
-        self.url= reverse('reset-password',kwargs={"token":self.emali_verify.token_hash})
+        self.url= reverse('v1:reset-password',kwargs={"token":self.emali_verify.token_hash})
     
     def test_reset_password(self):
         data={
@@ -63,4 +63,22 @@ class ResetPasswordTestCase(APITestCase):
         res= self.client.post(self.url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
         self.assertEqual(res.data["message"],"Before reset password you need to verify your email")
+        
+    def test_used_token(self):
+        self.emali_verify.used_it=True
+        self.emali_verify.save(update_fields=["used_it"])
+        res=self.client.post(self.url,{"password":"Ashuamankumar@1"})
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
+        
+    def test_wrong_purpuse(self):
+        self.emali_verify.purpose='VERIFY'
+        self.emali_verify.save(update_fields=['purpose'])
+        res=self.client.post(self.url,{"password":"Amankumar@1"})
+        self.assertEqual(res.status_code,status.HTTP_404_NOT_FOUND)
+        
+    def test_invalid_token(self):
+        urls=reverse('v1:reset-password',kwargs={"token":"vfdvsvvdsvsdvz"})
+        res=self.client.post(urls)
+        self.assertEqual(res.status_code,status.HTTP_404_NOT_FOUND)
+        
         
