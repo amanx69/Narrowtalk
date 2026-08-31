@@ -39,3 +39,13 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     def clear_all(self, request):
         request.user.notifications.all().delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    @action(detail=False,methods=['patch'])
+    def nofifiction_off(self,request,pk=None):
+        user=request.user
+        user.notifiction_enable = not user.notifiction_enable
+        user.save(update_fields=["notifiction_enable"])
+        return Response({
+        "notifications_enabled":user.notifiction_enable
+         })
+       
