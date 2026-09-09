@@ -21,6 +21,7 @@ class UserManage(BaseUserManager):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
+        extra_fields.setdefault('is_verify',True)
         return self.create_user(email, password, **extra_fields)
 
 class User(AbstractBaseUser,PermissionsMixin):
@@ -32,6 +33,7 @@ class User(AbstractBaseUser,PermissionsMixin):
     is_verify= models.BooleanField(default=False)
     in_project_count=models.PositiveIntegerField(default=0) 
     created_at= models.DateTimeField(auto_now_add=True)
+    notifiction_enable=models.BooleanField(default=True)
     
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

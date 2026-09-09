@@ -9,6 +9,7 @@ from django_ratelimit.decorators import ratelimit
 import datetime
 from django.db import transaction
 from django.utils.decorators import method_decorator
+from apps.Profile.models import Profile
 from django.db.models import F
 from django.core.cache import cache
 from ..models import Project, Membership, RoleNeeded, Application
@@ -24,7 +25,7 @@ from .serializers import (
     
     
     )
-from core.permissions import IsOwnerOrReadOnly,Isowner,IsProjectOwner ,IsProjectMember
+from core.permissions import IsOwnerOrReadOnly,Isowner,IsProjectOwner ,IsProjectMember,IsRoleOwner
 from .service import _safe_notify
 from apps.notification.api.service import (
     notify_post_created,
@@ -38,6 +39,7 @@ from apps.notification.api.service import (
     notify_member_left,
     notify_project_closed,
 )
+
 
 class ProjectView(ModelViewSet):
     permission_classes = [IsOwnerOrReadOnly, IsAuthenticated]
@@ -64,21 +66,15 @@ class ProjectView(ModelViewSet):
         instance.is_active = False
         instance.is_delete=True
         instance.save(update_fields=["is_active",'is_delete'])
-
+  #! create a role
     @action(detail=True, methods=["get", "post"], url_path="create_job_role")
     @method_decorator(ratelimit(key='user', rate='30/m', method=['GET','POST'],block=True),)
-    def roles(self, request, pk=None): #TODO role not created fix the bug
+    def roles(self, request, pk=None): 
         project = self.get_object()
        
         if request.method == "GET":
             roles = project.roles.filter(is_open=True)
             return Response(GetJobRoleSerializer(roles, many=True).data)
-    #TODO make role edit endpoint
-        if request.method =='PATCH':
-            
-            pass
-            
-
         if request.method == "POST":
             if project.owner != request.user:
                 return Response({"detail": "Only the owner can add roles to this post."}, status=status.HTTP_403_FORBIDDEN)
@@ -89,7 +85,7 @@ class ProjectView(ModelViewSet):
                 role = serializer.save(project=project)
                 _safe_notify(notify_new_role_added, role)
             return Response(GetJobRoleSerializer(role).data, status=status.HTTP_201_CREATED)
-
+#! close the project
     @action(detail=True, methods=["post"], url_path="close")
     @method_decorator(ratelimit(key='user', rate='5/m', method='POST',block=True),)
     def close_project(self, request, pk=None):
@@ -100,7 +96,7 @@ class ProjectView(ModelViewSet):
         project.save(update_fields=["is_active"])
         _safe_notify(notify_project_closed, project)
         return Response({"message": f"Post '{project.title}' closed successfully."})
-
+ #! give project meneber
     @action(detail=True, methods=["post",'GET'], url_path="Project_memeber")
     def get_project_member(self,request,pk=None):
         project=self.get_object()
@@ -114,9 +110,22 @@ class ProjectView(ModelViewSet):
         return Response({
             "data":ser.data
         },status.HTTP_200_OK)
-        
-    #TODO mak single role fatch
-    
+    #! get single and update the role
+    @action(detail=True, methods=["get", "patch"], url_path=r"role/(?P<role_id>[^/.]+)",url_name="edit_and_get_role",permission_classes=[])
+    def role_detail(self, request, pk=None, role_id=None):
+        project = self.get_object()
+        role = get_object_or_404(project.roles, id=role_id)
+
+        if request.method == "GET":
+            return Response(GetJobRoleSerializer(role).data)
+
+        if project.owner != request.user:
+            return Response({"detail": "Only the owner can edit this role."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = CreateJobRoleSerializer(role, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        role = serializer.save()
+        return Response(GetJobRoleSerializer(role).data)
         
         
 
@@ -143,6 +152,10 @@ class AccpectAppliction(APIView):
                 project=appliction.role.project,
                 defaults={"role_title": appliction.apply_role_purpose or appliction.role.title, "is_active": True}
             )
+            #! if user add in project than update a profile project jion fields
+            Profile.objects.filter(id=appliction.user.user_profile.id).update(
+                project_joined=F('profile_joined')+1
+            )
             cache.delete(f'project_memeber{appliction.role.project.id}')
             cache.delete(f'single_appliction{appliction_id}')
             
@@ -164,7 +177,7 @@ class RejectAppliction(APIView):
             return Response({"message": "Already rejected this application"}, status=status.HTTP_400_BAD_REQUEST)
 
         appliction.status = Application.Status.REJECTED
-        appliction.save(update_fields=["status"])
+        appliction.save(update_fields=["status"])            
         cache.delete(f'single_appliction{appliction_id}')
         _safe_notify(notify_application_rejected, appliction)
         return Response({"message": f"{appliction.user.username} application rejected for post {appliction.role.project.title}"})
@@ -290,6 +303,7 @@ class AppliedUserApplicationDetailView(APIView):
         queryset = Application.objects.filter(user=request.user)
         serializer = AppliedApplictionSerializer(queryset, many=True)
         return Response(serializer.data)
+    #! this class give list of accpected appliction
 class AppliedUserAccpetedApplictionView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self,request):
@@ -297,7 +311,7 @@ class AppliedUserAccpetedApplictionView(APIView):
         serializer=AppliedApplictionSerializer(data,many=True)
         return Response(serializer.data)
 
-
+#! this class return all project where user join 
 class UserJoinProjectDetiles(APIView):
     permission_classes=[IsAuthenticated]
     def get(self, request):
@@ -307,3 +321,5 @@ class UserJoinProjectDetiles(APIView):
         
     
 
+#! make project owner also send request to join
+#! user show and accpected

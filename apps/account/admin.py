@@ -3,13 +3,13 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
 
-from .models import User
+from .models import User ,Emailverifiction
 
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
 
-    list_display = ("email", "is_staff", "is_active", "is_verify", "created_at")
+    list_display = ("email", "is_staff", "is_active", "is_verify", "created_at",'notifiction_enable')
     list_filter = ("is_staff", "is_active", "is_verify", "created_at")
     search_fields = ("email",)
     ordering = ("-created_at",)   
@@ -19,7 +19,7 @@ class UserAdmin(BaseUserAdmin):
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         (_("Permissions"), {
-            "fields": ("is_active", "is_staff", "is_verify", "is_superuser", "groups", "user_permissions"),
+            "fields": ("is_active", "is_staff", "is_verify", "is_superuser", "groups", "user_permissions",'notifiction_enable',),
         }),
         (_("Important dates"), {"fields": ("last_login", "created_at")}),
     )
@@ -33,3 +33,6 @@ class UserAdmin(BaseUserAdmin):
     )
 
     filter_horizontal = ("groups", "user_permissions")
+    
+    
+admin.site.register(Emailverifiction)

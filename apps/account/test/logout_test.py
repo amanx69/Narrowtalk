@@ -3,12 +3,14 @@ from rest_framework.test import APITestCase
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from rest_framework import status
+from django.core.cache import cache
 from rest_framework_simplejwt.tokens import RefreshToken
 User=get_user_model()
 
 
 class LogoutTestCase(APITestCase):
     def setUp(self):
+        cache.clear()
         self.logout_url = reverse('logout')
         self.user = User.objects.create_user(
             email="test@example.com",
