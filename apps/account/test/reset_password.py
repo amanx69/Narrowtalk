@@ -3,33 +3,33 @@ from django.urls import reverse
 from django.contrib.auth import get_user_model
 from rest_framework import status
 from  apps.account.models import Emailverifiction
-
+from django.core.cache import cache
+import hashlib
 User=get_user_model()
 
 
 
 class ResetPasswordTestCase(APITestCase):
-    def setUp(self):
+    def setUp(self):   
+        cache.clear()
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpassword"
         )
-        self.user.is_verify = True
-        self.user.save(update_fields=["is_verify"])
-        self.token="dumm_token"
         self.emali_verify=Emailverifiction.objects.create(
             user=self.user,
-            token_hash=self.token,
-            purpose='RESETPASSWORD',
+            otp="258745",
             
         )
-        self.url= reverse('v1:reset-password',kwargs={"token":self.emali_verify.token_hash})
+        self.url= reverse('v1:reset-password')
     
     def test_reset_password(self):
         data={
-            "password":"Ashu@123456"
+            "password":"Ashu@123456",
+            "email":f"{self.user.email}",
+            "otp":f"{self.emali_verify.otp}"
         }
-        res= self.client.post(self.url,data)
+        res= self.client.post(self.url,data) 
         self.assertEqual(res.status_code,status.HTTP_200_OK)
         self.assertEqual(res.data["message"],"password reset successfully")
         
@@ -37,48 +37,89 @@ class ResetPasswordTestCase(APITestCase):
         
     def test_without_password(self):
         data={
-            "password":""
+            "password":"",
+            "email":f"{self.user.email}",
+            "otp":f"{self.emali_verify.otp}"
         }
         res= self.client.post(self.url,data)
-        print(res.data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(res.data['message'],"password is required")
         
         
     def test_weak_password(self):
         data={
-            "password":"aman"
+            "password":"aman",
+            "email":f"{self.user.email}",
+            "otp":f"{self.emali_verify.otp}"
         }
         res=self.client.post(self.url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-        self.assertIn("password", res.data["message"].lower())
-        
-    def test_not_verify_user(self):
-        self.user.is_verify = False
-        self.user.save(update_fields=["is_verify"])
-
+    def test_attempts_for_reset_password(self):
+        self.emali_verify.attempts=3
+        self.emali_verify.save(update_fields=['attempts'])
         data={
-            "password":"Ashukumar!12"
+               "password":"Ashu@123456",
+                "email":f"{self.user.email}",
+                "otp":f"{self.emali_verify.otp}"
+            
+        }
+        res=self.client.post(self.url,data)
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res.data['message'],"to many attempts please resend again")
+        
+    def test_worng_otp(self):
+        data={
+            "password":"Ashu@123456",
+            "email":f"{self.user.email}",
+            "otp":f"544475"
+                    
+                }
+        res=self.client.post(self.url,data)
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res.data['message'],"Please enter a correct otp")
+        
+        
+
+    def test_without_email(self):
+        data={
+            "password":"Amnakumar@1",
+            "email":f"",
+            "otp":f"{self.emali_verify.otp}"
         }
         res= self.client.post(self.url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(res.data["message"],"Before reset password you need to verify your email")
         
-    def test_used_token(self):
-        self.emali_verify.used_it=True
-        self.emali_verify.save(update_fields=["used_it"])
-        res=self.client.post(self.url,{"password":"Ashuamankumar@1"})
+    def test_without_otp(self):
+        data={
+            "password":"Amankumardahj",
+            "email":f"{self.user.email}",
+            "otp":f""
+        }
+        res= self.client.post(self.url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
         
-    def test_wrong_purpuse(self):
-        self.emali_verify.purpose='VERIFY'
-        self.emali_verify.save(update_fields=['purpose'])
-        res=self.client.post(self.url,{"password":"Amankumar@1"})
-        self.assertEqual(res.status_code,status.HTTP_404_NOT_FOUND)
         
-    def test_invalid_token(self):
-        urls=reverse('v1:reset-password',kwargs={"token":"vfdvsvvdsvsdvz"})
-        res=self.client.post(urls)
-        self.assertEqual(res.status_code,status.HTTP_404_NOT_FOUND)
+    def test_not_regester_email(self):
+        data={
+                "password":"Amankumarf",
+                "email":f"Notregenter@gmaail.com",
+                "otp":f"457844"
+            }
+        res= self.client.post(self.url,data)
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res.data['message'],"otp is expire please resend again")
+
+
+    def test_short_otp(self):
+        data={
+            "password":"Anakmjjkcjkd",
+            "email":f"{self.user.email}",
+            "otp":f"44"
+        }
+        res= self.client.post(self.url,data)
+        print(res.data)
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
         
+        
+    
+            
         
