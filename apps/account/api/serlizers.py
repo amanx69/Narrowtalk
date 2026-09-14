@@ -18,6 +18,7 @@ class SignUpSerializer(serializers.ModelSerializer):
             password=validated_data['password'],
         )
         send_verification_email.delay(id=str(user.id))
+        print(user.id)
             
         return user
     def validate_password(self,value):
@@ -65,20 +66,22 @@ class resendverifySerializer(serializers.Serializer):
     
         
         
-class ResetPasswordSerializer(serializers.Serializer):
+class VerifyResetPasswordOtPSerializer(serializers.Serializer):
     email=serializers.EmailField(required=True)
     otp=serializers.CharField(required=True)
-    password = serializers.CharField(
-        write_only=True,
-        min_length=8
-    )
-
-    def validate_password(self, value):
-        validate_password(value)
-        return value
+   
     def validate_otp(self,value):
         if not value:
             raise serializers.ValidationError('otp is required')
         if len(value)>6 or len(value)<6:
             raise serializers.ValidationError('check your otp length')
+        return value
+    
+class ResetPasswordSerializers(serializers.Serializer):
+    password= serializers.CharField(required=True)
+    token=serializers.CharField(required=True)
+    
+    
+    def validate_password(self,value):
+        validate_password(value)
         return value
