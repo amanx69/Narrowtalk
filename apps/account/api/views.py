@@ -4,9 +4,10 @@ from .serlizers import(
   SignUpSerializer ,
   LoginSerlizer,
   ForgetPasswordSerializer,
-  ResetPasswordSerializer,
+  VerifyResetPasswordOtPSerializer,
   VerifyEmailSerializer,
-  resendverifySerializer
+  resendverifySerializer,
+  ResetPasswordSerializers
   )
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -21,7 +22,10 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import render, redirect
 from rest_framework_simplejwt.tokens import RefreshToken
 import hashlib
+from .service import *
+from ..models import PasswordResetToken
 User=get_user_model()
+
 #! signup
 
 class SignUp(generics.CreateAPIView):
@@ -73,6 +77,7 @@ class VerifyEmail(APIView):
         ser= VerifyEmailSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         otp=ser.validated_data['otp']
+        hash_otp= hashlib.sha256(otp.encode()).hexdigest()
         email=ser.validated_data['email']
         with transaction.atomic():
           
@@ -90,7 +95,7 @@ class VerifyEmail(APIView):
                 return Response({
                     "message":"to many attempts please resend again"
                 },status.HTTP_400_BAD_REQUEST)
-            if otp!=Emailotp.otp:
+            if hash_otp!=Emailotp.otp:
                 Emailotp.attempts+=1
                 Emailotp.save(update_fields=['attempts'])
                 return Response({
@@ -153,16 +158,16 @@ class SendForgetPassworEmaildView(APIView):
         },status=status.HTTP_200_OK)
         
 #! reset password endpoint
-class ResetPasswordView(APIView):
+class VerifyResetPasswordOtpView(APIView):
     permission_classes=[permissions.AllowAny]
     @method_decorator(ratelimit(key='ip', rate='7/h',method='POST'))
     def post(self,request):
         
-        ser=ResetPasswordSerializer(data=request.data)
+        ser=VerifyResetPasswordOtPSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        password=ser.validated_data['password']
         email=ser.validated_data['email']
         otp=ser.validated_data['otp']
+        hash_otp= hashlib.sha256(otp.encode()).hexdigest()
         with transaction.atomic():    
 
             Emailotp= Emailverifiction.objects.select_for_update().filter(
@@ -179,25 +184,50 @@ class ResetPasswordView(APIView):
                 return Response({
                     "message":"to many attempts please resend again"
                 },status.HTTP_400_BAD_REQUEST)
-            if otp!=Emailotp.otp:
+            if hash_otp!=Emailotp.otp:
                 Emailotp.attempts+=1
                 Emailotp.save(update_fields=['attempts'])
                 return Response({
                     "message":"Please enter a correct otp"
                     },status.HTTP_400_BAD_REQUEST)
                 
-          
-                
-            Emailotp.user.set_password(password)
-            Emailotp.user.save(update_fields=["password"])
             Emailotp.used_it = True
             Emailotp.save(update_fields=["used_it"])
+            token= gernate_password_token(Emailotp.user)
             Emailotp.delete()
         
         return Response({
-            "message":"password reset successfully"
+            "message":"verify email successfully",
+            "token":token,
         },status=status.HTTP_200_OK)
+
+
+class ResetPasswordView(APIView):
+    
+    def post(self,request):
+        ser= ResetPasswordSerializers(data=request.data)
+        ser.is_valid(raise_exception=True)
+        password=ser.validated_data['password']
+        token=ser.validated_data['token']
+        token_hash=hashlib.sha256(token.encode()).hexdigest()
+        tokenobj=PasswordResetToken.objects.filter(token=token_hash).first()
+        if tokenobj.is_expired() or tokenobj.used_it:
+            return Response({
+                "message":"token is expire repeat the poccess"
+            },status.HTTP_400_BAD_REQUEST)
+            
+        if token_hash!=tokenobj.token:
+            return Response({
+                "somthing went worong repeat the process"
+            },status.HTTP_400_BAD_REQUEST)
+        tokenobj.user.set_password(password)
+        tokenobj.user.save(update_fields=['password'])
+        tokenobj.used_it=True
+        return Response({
+            "message":"password reset successfully"
+        },status.HTTP_200_OK)
         
+            
         
 #! logout endpoint
 
