@@ -92,7 +92,15 @@ class Logintest(APITestCase):
         response = self.client.post(self.url, {})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         
+    def test_login_without_email(self):
+        res=self.client.post(self.url,{"email":"","password":"AmanKumar@12"})
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
+  
         
-
     
-
+    def test_login_without_password(self):
+        res=self.client.post(self.url,{"email":"Aman@gmail.com","password":""})
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
+  
+        
+        

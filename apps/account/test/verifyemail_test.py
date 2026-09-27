@@ -5,7 +5,7 @@ from rest_framework import status
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-    
+import hashlib
 from  apps.account.models import Emailverifiction
 
 user=get_user_model()
@@ -17,9 +17,11 @@ class VerifyEmailTestCase(TestCase):
         cache.clear()
         self.client = APIClient()
         self.user = user.objects.create_user(email="test@example.com", password="Pass1234!")
+        self.otp="458745"
+        hash_otp=hashlib.sha256(self.otp.encode()).hexdigest()
         self.verify=Emailverifiction.objects.create(
             user=self.user,
-            otp="458745",
+           otp=hash_otp,
             used_it=False,
         )
         self.url= reverse("v1:email-verify")
@@ -28,7 +30,7 @@ class VerifyEmailTestCase(TestCase):
         
         data={
             "email":f"{self.user.email}",
-            "otp":f'{self.verify.otp}'
+            "otp":f'{self.otp}'
         }
         response = self.client.post(self.url,data)
         self.assertEqual(response.status_code, 200)
@@ -39,12 +41,12 @@ class VerifyEmailTestCase(TestCase):
         self.verify.save()
         data={
                 "email":f"{self.user.email}",
-                "otp":f'{self.verify.otp}'
+                "otp":f'{self.otp}'
             }
 
         response = self.client.post(self.url,data)
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.data["message"],"otp is expire please resend again")
+        self.assertEqual(response.data["message"],"This OTP has expired. Please request a new one.")
 
     
     def test_attempts_for_verify_email(self):
@@ -53,12 +55,12 @@ class VerifyEmailTestCase(TestCase):
         data={
              
                 "email":f"{self.user.email}",
-                "otp":f"{self.verify.otp}"
+                "otp":f"{self.otp}"
             
         }
         res=self.client.post(self.url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(res.data['message'],"to many attempts please resend again")
+        self.assertEqual(res.data['message'],"Too many invalid attempts. Please request a new OTP.")
         
     def test_worng_otp(self):
         data={
@@ -69,7 +71,7 @@ class VerifyEmailTestCase(TestCase):
                 }
         res=self.client.post(self.url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(res.data['message'],"Please enter a correct otp")
+        self.assertEqual(res.data['message'],"Invalid OTP entered. Please try again.")
         
         
 
@@ -77,7 +79,7 @@ class VerifyEmailTestCase(TestCase):
         data={
          
             "email":f"",
-            "otp":f"{self.verify.otp}"
+            "otp":f"{self.otp}"
         }
         res= self.client.post(self.url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
@@ -100,7 +102,7 @@ class VerifyEmailTestCase(TestCase):
             }
         res= self.client.post(self.url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(res.data['message'],"otp is expire please resend again")
+        self.assertEqual(res.data['message'],"This OTP has expired. Please request a new one.")
 
 
     def test_short_otp(self):

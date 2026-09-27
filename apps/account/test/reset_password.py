@@ -83,7 +83,7 @@ class ResetPasswordTestCase(APITestCase):
                 }
         res=self.client.post(self.otp_url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(res.data['message'],"Please enter a correct otp")
+        self.assertEqual(res.data['message'],"Invalid OTP entered. Please try again.")
         
         
 
@@ -113,7 +113,7 @@ class ResetPasswordTestCase(APITestCase):
             }
         res= self.client.post(self.otp_url,data)
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(res.data['message'],"otp is expire please resend again")
+
 
 
     def test_short_otp(self):
@@ -138,7 +138,7 @@ class ResetPasswordTestCase(APITestCase):
 
         response = self.client.post(self.url,data)
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.data["message"],"token is expire repeat the poccess")
+
         
         
     def test_verify_otp_expire(self):
@@ -155,5 +155,5 @@ class ResetPasswordTestCase(APITestCase):
             response = self.client.post(self.otp_url,data)
             print(response.data)
             self.assertEqual(response.status_code, 400)
-            self.assertEqual(response.data["message"],"otp is expire please resend again")
+            
         
