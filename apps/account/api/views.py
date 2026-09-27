@@ -23,6 +23,7 @@ from django.shortcuts import render, redirect
 from rest_framework_simplejwt.tokens import RefreshToken
 import hashlib
 from .service import *
+from rest_framework_simplejwt.token_blacklist.models import  OutstandingToken, BlacklistedToken
 from ..models import PasswordResetToken
 User=get_user_model()
 
@@ -37,13 +38,8 @@ class SignUp(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        token=RefreshToken.for_user(user)
         return Response(
-            {"message": "User registered successfully verify to continue",
-             "access":str(token.access_token),
-             "refresh":str(token)
-             
-             },
+            {"message": "User registered successfully. Please verify your email to continue."},
             status=status.HTTP_201_CREATED
         )
 #! Login
@@ -51,7 +47,7 @@ class SignUp(generics.CreateAPIView):
 class LoginView(APIView):
     
     permission_classes=[permissions.AllowAny]
-    @method_decorator(ratelimit(key='ip', rate='6/h',method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='4/m',method='POST'))
     def post(self,request):
         serlizer= LoginSerlizer(data=request.data)
         serlizer.is_valid(raise_exception=True)
@@ -72,7 +68,7 @@ class LoginView(APIView):
 #! verify
 class VerifyEmail(APIView):
     permission_classes=[]
-    @method_decorator(ratelimit(key='ip', rate='5/h',method='GET'))
+    @method_decorator(ratelimit(key='ip', rate='5/m',method='GET'))
     def post(self,request):
         ser= VerifyEmailSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -86,20 +82,20 @@ class VerifyEmail(APIView):
             ).first()
           
             if not Emailotp:
-                return Response({"message":"otp is expire please resend again"},status.HTTP_400_BAD_REQUEST)
+                return Response({"message": "This OTP has expired. Please request a new one."},status.HTTP_400_BAD_REQUEST)
             if Emailotp.is_expire():
                 return Response({
-                    "message":"otp is expire please resend again"
+                    "message": "This OTP has expired. Please request a new one."
                 },status.HTTP_400_BAD_REQUEST)
             if Emailotp.attempts >=3:
                 return Response({
-                    "message":"to many attempts please resend again"
+                    "message": "Too many invalid attempts. Please request a new OTP."
                 },status.HTTP_400_BAD_REQUEST)
             if hash_otp!=Emailotp.otp:
                 Emailotp.attempts+=1
                 Emailotp.save(update_fields=['attempts'])
                 return Response({
-                    "message":"Please enter a correct otp"
+                    "message": "Invalid OTP entered. Please try again."
                 },status.HTTP_400_BAD_REQUEST)
            
             Emailotp.user.is_verify = True
@@ -107,7 +103,16 @@ class VerifyEmail(APIView):
             Emailotp.user.save(update_fields=["is_verify"])
             Emailotp.save(update_fields=["used_it"])
             Emailotp.delete()
-            return Response({"message":"you email is verify continue yor journary"},status.HTTP_200_OK)
+            
+            refresh = RefreshToken.for_user(Emailotp.user)
+            
+            return Response({
+                "message": "Your email is verified. Welcome!",
+                "tokens": {
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh)
+                }
+            }, status=status.HTTP_200_OK)
          
 
       
@@ -116,7 +121,7 @@ class VerifyEmail(APIView):
 #! resend verify email
 class ResendVerifyEmailView(APIView):
     permission_classes=[permissions.AllowAny]
-    @method_decorator(ratelimit(key='ip', rate='5/h',method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request):
         ser=resendverifySerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -124,19 +129,19 @@ class ResendVerifyEmailView(APIView):
         user= User.objects.filter(email__iexact=email).first()
         if not user:
             return Response({
-                "message":"if your email i correct than check you email"
+                "message": "If an account with this email exists, then check you email."
             },status=status.HTTP_200_OK)
         
         if user.is_verify:
             return Response({
-                "message":"your email is already verified"
+                "message": "This email is already verified."
             },status=status.HTTP_200_OK)
         
         from .task import send_verification_email
         send_verification_email.delay(id=str(user.id))
         
         return Response({
-            "message":"otp send on you email"
+            "message": "A new OTP has been sent to your email."
         },status=status.HTTP_200_OK)
             
 
@@ -147,20 +152,21 @@ class ResendVerifyEmailView(APIView):
 from .task import send_reset_password_email
 class SendForgetPassworEmaildView(APIView):
     permission_classes=[permissions.AllowAny]
-    @method_decorator(ratelimit(key='ip', rate='8/h',method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request):
         ser=ForgetPasswordSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         user= User.objects.filter(email__iexact=ser.validated_data['email']).first()
-        send_reset_password_email.delay(id=str(user.id))
+        if user:
+            send_reset_password_email.delay(id=str(user.id))
         return Response({
-            "message":"reset password link send you email check you email"
+            "message": "If an account exists, a password reset OTP has been sent to your email."
         },status=status.HTTP_200_OK)
         
 #! reset password endpoint
 class VerifyResetPasswordOtpView(APIView):
     permission_classes=[permissions.AllowAny]
-    @method_decorator(ratelimit(key='ip', rate='7/h',method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request):
         
         ser=VerifyResetPasswordOtPSerializer(data=request.data)
@@ -174,21 +180,21 @@ class VerifyResetPasswordOtpView(APIView):
                 user__email=email
             ).first()
             if not Emailotp:
-                return Response({"message":"otp is expire please resend again"},status.HTTP_400_BAD_REQUEST)
+                return Response({"message": "This OTP has expired. Please request a new one."},status.HTTP_400_BAD_REQUEST)
                 
             if Emailotp.is_expire():
                 return Response({
-                "message":"otp is expire please resend again"
+                "message": "This OTP has expired. Please request a new one."
                 },status.HTTP_400_BAD_REQUEST)
             if Emailotp.attempts >=3:
                 return Response({
-                    "message":"to many attempts please resend again"
+                    "message": "Too many invalid attempts. Please request a new OTP."
                 },status.HTTP_400_BAD_REQUEST)
             if hash_otp!=Emailotp.otp:
                 Emailotp.attempts+=1
                 Emailotp.save(update_fields=['attempts'])
                 return Response({
-                    "message":"Please enter a correct otp"
+                    "message": "Invalid OTP entered. Please try again."
                     },status.HTTP_400_BAD_REQUEST)
                 
             Emailotp.used_it = True
@@ -197,13 +203,13 @@ class VerifyResetPasswordOtpView(APIView):
             Emailotp.delete()
         
         return Response({
-            "message":"verify email successfully",
+            "message": "Email verified successfully.",
             "token":token,
         },status=status.HTTP_200_OK)
 
 
 class ResetPasswordView(APIView):
-    
+    @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request):
         ser= ResetPasswordSerializers(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -211,18 +217,24 @@ class ResetPasswordView(APIView):
         token=ser.validated_data['token']
         token_hash=hashlib.sha256(token.encode()).hexdigest()
         tokenobj=PasswordResetToken.objects.filter(token=token_hash).first()
+        if not tokenobj:
+            return Response({"message":"invalid token"}, status=status.HTTP_400_BAD_REQUEST)
         if tokenobj.is_expired() or tokenobj.used_it:
             return Response({
-                "message":"token is expire repeat the poccess"
+                "message": "This password reset session has expired. Please restart the process."
             },status.HTTP_400_BAD_REQUEST)
             
         if token_hash!=tokenobj.token:
             return Response({
-                "somthing went worong repeat the process"
+                "message": "Invalid or manipulated reset token. Please restart the process."
             },status.HTTP_400_BAD_REQUEST)
         tokenobj.user.set_password(password)
         tokenobj.user.save(update_fields=['password'])
         tokenobj.used_it=True
+        tokenobj.save(update_fields=['used_it'])
+        tokens= OutstandingToken.objects.filter(user=tokenobj.user)
+        for t in tokens:
+            BlacklistedToken.objects.get_or_create(token=t)
         return Response({
             "message":"password reset successfully"
         },status.HTTP_200_OK)
@@ -241,4 +253,4 @@ class LogoutView(APIView):
             token.blacklist()
             return Response({"message": "Logout successful"}, status=status.HTTP_205_RESET_CONTENT)
         except Exception as e:
-            return Response({"error": "somthing went wrong"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Failed to logout. Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
