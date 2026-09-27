@@ -27,18 +27,30 @@ class SignUpSerializer(serializers.ModelSerializer):
     
     
 class LoginSerlizer(serializers.Serializer):
-    email = serializers.EmailField()
+    email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True)
     
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
+        
+        if not email:
+            raise serializers.ValidationError("email is required")
+        if not password:
+            raise serializers.ValidationError("password is required")
+            
         user = authenticate(email=email, password=password)
         if not user:
             raise serializers.ValidationError("Invalid email or password")
         
         if not user.is_verify:
-            raise serializers.ValidationError("Email not verified first verify your email")
+            from .task import send_verification_email
+            send_verification_email.delay(id=str(user.id))
+            raise serializers.ValidationError({
+                "message": "Email not verified. A new OTP has been sent.",
+                "error_code": "EMAIL_NOT_VERIFIED"
+                    },)
+                    
         
         attrs['user'] = user
         return attrs
