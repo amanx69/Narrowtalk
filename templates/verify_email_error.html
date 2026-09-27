@@ -1,0 +1,184 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Verification Failed | TeamMatch</title>
+    <style>
+        :root {
+            --bg: #f4f7ff;
+            --card: rgba(255, 255, 255, 0.9);
+            --border: rgba(99, 102, 241, 0.12);
+            --text: #111827;
+            --muted: #6b7280;
+            --danger: #ef4444;
+            --danger-soft: #fee2e2;
+            --primary: #4f46e5;
+            --primary-dark: #3730a3;
+            --success: #10b981;
+            --shadow: 0 20px 45px rgba(79, 70, 229, 0.15);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            font-family: Inter, "Segoe UI", sans-serif;
+            background: linear-gradient(135deg, #eef2ff 0%, #f9fafb 100%);
+            color: var(--text);
+        }
+
+        .card {
+            width: min(92vw, 460px);
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 26px;
+            padding: 32px 28px;
+            text-align: center;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(18px);
+        }
+
+        .badge {
+            width: 88px;
+            height: 88px;
+            margin: 0 auto 18px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            background: var(--danger-soft);
+            color: var(--danger);
+            font-size: 40px;
+            font-weight: 700;
+        }
+
+        h1 {
+            margin: 0 0 12px;
+            font-size: clamp(2rem, 4vw, 2.3rem);
+            font-weight: 800;
+            color: var(--danger);
+        }
+
+        .message {
+            margin: 0;
+            line-height: 1.7;
+            color: var(--muted);
+            font-size: 1rem;
+        }
+
+        .email {
+            display: inline-block;
+            margin-top: 14px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: #eef2ff;
+            color: var(--primary-dark);
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+
+        form {
+            margin-top: 24px;
+        }
+
+        .btn {
+            width: 100%;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            font-size: 1rem;
+            font-weight: 700;
+            padding: 16px 18px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 12px 25px rgba(79, 70, 229, 0.25);
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.75;
+            cursor: not-allowed;
+        }
+
+        .status {
+            min-height: 24px;
+            margin-top: 16px;
+            font-size: 0.95rem;
+            color: var(--success);
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge">!</div>
+        <h1>Verification Failed</h1>
+        <p class="message">{{ message }}</p>
+        <span class="email">{{ email }}</span>
+
+        <form id="resendForm" action="{{ resend_url }}" method="post">
+            {% csrf_token %}
+            <input type="hidden" name="email" value="{{ email }}" />
+            <button type="submit" id="resendBtn" class="btn">Resend verification email</button>
+        </form>
+
+        <div id="status" class="status" aria-live="polite"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('resendForm');
+        const button = document.getElementById('resendBtn');
+        const status = document.getElementById('status');
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return '';
+        }
+
+        form.addEventListener('submit', async function (event) {
+            event.preventDefault();
+            button.disabled = true;
+            button.textContent = 'Sending...';
+            status.textContent = '';
+
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ email: form.email.value })
+                });
+
+                const data = await response.json().catch(() => ({}));
+                const message = data.message || 'Verification email sent successfully.';
+
+                if (response.ok) {
+                    status.textContent = message;
+                    status.style.color = '#10b981';
+                } else {
+                    status.textContent = message;
+                    status.style.color = '#ef4444';
+                }
+            } catch (error) {
+                status.textContent = 'Something went wrong. Please try again.';
+                status.style.color = '#ef4444';
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Resend verification email';
+            }
+        });
+    </script>
+</body>
+</html>

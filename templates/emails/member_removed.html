@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f9fafb; margin: 0; padding: 0; color: #111827; }
+        .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .header { background-color: #111827; padding: 30px 40px; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px; }
+        .content { padding: 40px; }
+        .content h2 { color: #111827; font-size: 20px; margin-top: 0; }
+        .content p { color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px; }
+        .footer { background-color: #f3f4f6; padding: 20px; text-align: center; color: #6b7280; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header"><h1>NARROW</h1></div>
+        <div class="content">
+            <h2>Project Update</h2>
+            <p>Hi {{ username }},</p>
+            <p>You have been removed from the project <strong>"{{ project_name }}"</strong>.</p>
+            <p>If you believe this was a mistake, or if you'd like to find a new team, you can jump back into the app and browse open roles!</p>
+        </div>
+        <div class="footer"><p>Built with ❤️ by Narrow</p></div>
+    </div>
+</body>
+</html>
