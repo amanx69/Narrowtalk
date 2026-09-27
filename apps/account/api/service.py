@@ -9,7 +9,6 @@ def gernate_otp(user):
     Emailverifiction.objects.filter(user=user).delete()
     otp= str(secrets.randbelow(900000) + 100000)
     hash_otp= hashlib.sha256(otp.encode()).hexdigest()
-    print(hash_otp)
     Emailverifiction.objects.create(
         user=user,
         otp=hash_otp

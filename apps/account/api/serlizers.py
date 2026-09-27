@@ -80,14 +80,7 @@ class resendverifySerializer(serializers.Serializer):
         
 class VerifyResetPasswordOtPSerializer(serializers.Serializer):
     email=serializers.EmailField(required=True)
-    otp=serializers.CharField(required=True)
-   
-    def validate_otp(self,value):
-        if not value:
-            raise serializers.ValidationError('otp is required')
-        if len(value)>6 or len(value)<6:
-            raise serializers.ValidationError('check your otp length')
-        return value
+    otp=serializers.CharField(required=True,max_length=6)  
     
 class ResetPasswordSerializers(serializers.Serializer):
     password= serializers.CharField(required=True)
