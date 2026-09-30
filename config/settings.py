@@ -42,10 +42,12 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'apps.account',
     "apps.Profile",
-    'apps.rooms',
     'apps.post',
     'apps.notification',
     'apps.Feed',
+    'apps.Chats',
+    'apps.safety',
+    'apps.Feedback',
     #! third  party
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
@@ -56,11 +58,14 @@ INSTALLED_APPS = [
     'silk',
     'django_filters',
     'cloudinary',
+    'drf_spectacular',
+    "debug_toolbar",
     
   
 ]
 
-MIDDLEWARE = [
+MIDDLEWARE = [   
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -69,20 +74,20 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    #'silk.middleware.SilkyMiddleware',
+    'silk.middleware.SilkyMiddleware',
   
 ]
 
 #TODO remove in prod
 SILKY_AUTHENTICATION = True
 SILKY_AUTHORISATION = True
-SILKY_PYTHON_PROFILER = False
+SILKY_PYTHON_PROFILER = True
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': ['templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -94,7 +99,7 @@ TEMPLATES = [
     },
 ]
 
-
+GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default="")
 
 
 ASGI_APPLICATION = 'config.asgi.application'
@@ -110,15 +115,18 @@ CHANNEL_LAYERS = {
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# Prefer Postgres when DB env vars are present in .env, else fall back to SQLite
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-          'OPTIONS': {
-            'timeout': 20,
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql_psycopg2',
+            'NAME': config('name'),
+            'USER': config('username', default=''),
+            'PASSWORD': config('password', default=''),
+            'HOST': config('host', default='localhost'),
+            'PORT': config('port', default='5432'),
         }
     }
-}
 
 REST_FRAMEWORK = {
     'DEFAULT_PARSER_CLASSES': [
@@ -126,13 +134,43 @@ REST_FRAMEWORK = {
             'rest_framework.parsers.FormParser',
             'rest_framework.parsers.MultiPartParser',
         ],
+    'NON_FIELD_ERRORS_KEY': 'error', 
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
-    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend']
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    "DEFAULT_THROTTLE_CLASSES": [
+      
+    ],
+     "DEFAULT_THROTTLE_RATES": {
+        'Project_create': '3/m',
+        'Project_update': '15/m',
+        'Project_delete': '5/m',
+        'appliction_create': '5/m',
+        'appliction_accpect': '20/m',
+        'appliction_reject': '20/m',
+        'role_create': '10/m',
+        'role_update': '15/m',
+        'role_delete': '10/m',
+        'comment_create': '10/m',
+        'comment_delete': '10/m',
+        'project_save': '30/m',
+        'profile_update': '10/m',
+        'profile_like': '30/m',
+        'remove_owner':"10/m",
+        'feedback':"2/h",
+  
+    }
+   
     
 }
-
+INTERNAL_IPS = [
+ 
+    "127.0.0.1",
+    
+  
+]
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -170,6 +208,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+
 AUTH_USER_MODEL= "account.User"
 
 
@@ -188,7 +227,7 @@ EMAIL_USE_TLS = True
 EMAIL_PORT = config('email_port')
 EMAIL_HOST_USER = config('email_host')
 EMAIL_HOST_PASSWORD = config('email_pass')
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend' #TODO remove in prod
+#EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend' #TODO remove in prod
 
 
 
@@ -203,7 +242,13 @@ LIVEKIT_URL=config('LIVEKIT_URL')
 LIVEKIT_API_KEY=config('LIVEKIT_API_KEY')
 LIVEKIT_API_SECRET=config('LIVEKIT_API_SECRET')
 
-CORS_ALLOW_ALL_ORIGINS = DEBUG
+CORS_ALLOW_ALL_ORIGINS = True   # Allow all in dev (emulator, Postman, etc.)
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = [
+    "http://10.0.2.2:8000",     # Android emulator
+    "http://127.0.0.1:8000",    # iOS simulator / browser
+    "http://localhost:8000",
+]
 
 
 
