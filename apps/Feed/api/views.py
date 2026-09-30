@@ -1,5 +1,8 @@
 from rest_framework.response import Response
 from rest_framework import status
+from django.db.models import Exists, OuterRef
+from apps.Feed.models import ProjectLike, Projectsave
+
 from rest_framework.views  import APIView
 from rest_framework.permissions import IsAuthenticated
 from core.permissions import Isowner 
@@ -80,6 +83,7 @@ class SaveProjectView(APIView):
     def post(self,request,project_id):
         project=get_object_or_404(Project,id=project_id)
         result=toggle_save(request.user,project)
+        cache.delete(f"saved_projects_:{request.user.id}") # delete the cache after new save/unsave
         return Response(result,status=status.HTTP_200_OK)
 
 
@@ -89,6 +93,16 @@ class ProjectSaveListApiView(generics.ListAPIView):
     def get_queryset(self):
         return Projectsave.objects.filter(user=self.request.user)
     serializer_class=ProjectSaveSerializer
+    
+    def list(self, request, *args, **kwargs):
+        cache_key = f"saved_projects_:{request.user.id}"
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            return Response(cached_data)
+        res= super().list(request, *args, **kwargs)
+        cache.set(cache_key, res.data, timeout=1200)
+        return res
+    
     
   
     
@@ -112,7 +126,13 @@ class FeedView(APIView):
         blocked_by_me = UserBlock.objects.filter(blocker=request.user).values_list('blocked_user_id', flat=True)
         blocked_me = UserBlock.objects.filter(blocked_user=request.user).values_list('blocker_id', flat=True)
         blocked_users_ids = set(blocked_by_me).union(set(blocked_me))
-        data= Project.objects.filter(is_active=True).select_related('owner').exclude(owner=request.user).exclude(owner_id__in=blocked_users_ids).order_by('created_at') 
+        data= Project.objects.filter(is_active=True).select_related('owner','owner__user_profile') \
+        .exclude(owner=request.user).exclude(owner_id__in=blocked_users_ids) \
+        .order_by('-created_at') \
+        .annotate(
+            is_liked=Exists(Project.objects.filter(project=OuterRef('pk'), user=request.user)),
+            is_saved=Exists(Projectsave.objects.filter(project=OuterRef('pk'), user=request.user))
+        ) 
         paginator = FeedPegination()
         page = paginator.paginate_queryset(data, request)
         ser = FeedSerializer(page, many=True, context={'request': request})
@@ -127,18 +147,26 @@ class HomeFeedView(APIView):
     permission_classes=[IsAuthenticated]
     
     def get(self,request):
-        cache_data=cache.get(f'home_feed_cache_v2_{request.user.id}')
-        if cache_data:
-           pass
+      #  cache_data=cache.get(f'home_feed_cache_v2_{request.user.id}')
+       # if cache_data:
+       #    pass
         blocked_by_me = UserBlock.objects.filter(blocker=request.user).values_list('blocked_user_id', flat=True)
         blocked_me = UserBlock.objects.filter(blocked_user=request.user).values_list('blocker_id', flat=True)
         blocked_users_ids = set(blocked_by_me).union(set(blocked_me))
-        data=Project.objects.filter(is_active=True).select_related('owner').exclude(owner=request.user).exclude(owner_id__in=blocked_users_ids) .order_by('created_at') 
+        data = Project.objects.filter(is_active=True) \
+            .select_related('owner', 'owner__user_profile') \
+            .exclude(owner=request.user) \
+            .exclude(owner_id__in=blocked_users_ids) \
+            .annotate(
+                is_liked_by_user=Exists(ProjectLike.objects.filter(project=OuterRef('pk'), user=request.user)),
+                is_saved_by_user=Exists(Projectsave.objects.filter(project=OuterRef('pk'), user=request.user))
+            ) \
+            .order_by('-created_at') 
         paginator = HomeFeedPegination()
         page=paginator.paginate_queryset(data,request)
         ser= HomeFeedSerializer(page,many=True,context={'request': request})  
         response = paginator.get_paginated_response(ser.data)
-        cache.set(f'home_feed_cache_v2_{request.user.id}', response.data, timeout=100)   
+     #   cache.set(f'home_feed_cache_v2_{request.user.id}', response.data, timeout=100)   
         return response
         
         
@@ -149,16 +177,16 @@ class HomeFeedView(APIView):
 class TrandingProjectView(APIView):
     def get(self,request):
         
-        cache_data=cache.get('best_ideas_strip_v2')
+        cache_data=cache.get('best_ideas_strip_v1')
         if  cache_data  :
             return Response(cache_data,status.HTTP_200_OK)
         queryset = (
                 Project.objects.filter(is_active=True)
-                .select_related('owner')
+                .select_related('owner','owner__user_profile')
                 .order_by('-like_count','-view_count')[:10]
             )
         data=FeedSerializer(queryset,many=True)
-        cache.set('best_ideas_strip_v2',data.data,timeout=600)
+        cache.set('best_ideas_strip_v1',data.data,timeout=600)
         return Response(data.data)
         
             
