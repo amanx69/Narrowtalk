@@ -25,6 +25,10 @@ import hashlib
 from .service import *
 from rest_framework_simplejwt.token_blacklist.models import  OutstandingToken, BlacklistedToken
 from ..models import PasswordResetToken
+from .serlizers import GoogleAuthSerializers
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from django.conf import settings
 User=get_user_model()
 
 #! signup
@@ -33,7 +37,7 @@ class SignUp(generics.CreateAPIView):
 
     permission_classes=[permissions.AllowAny]
     serializer_class= SignUpSerializer
-    @method_decorator(ratelimit(key='ip', rate='6/h',method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='3/m',method='POST'))
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -47,7 +51,7 @@ class SignUp(generics.CreateAPIView):
 class LoginView(APIView):
     
     permission_classes=[permissions.AllowAny]
-    @method_decorator(ratelimit(key='ip', rate='4/m',method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='3/m',method='POST'))
     def post(self,request):
         serlizer= LoginSerlizer(data=request.data)
         serlizer.is_valid(raise_exception=True)
@@ -67,7 +71,7 @@ class LoginView(APIView):
 
 #! verify
 class VerifyEmail(APIView):
-    permission_classes=[]
+    permission_classes=[permissions.AllowAny]
     @method_decorator(ratelimit(key='ip', rate='5/m',method='GET'))
     def post(self,request):
         ser= VerifyEmailSerializer(data=request.data)
@@ -209,6 +213,7 @@ class VerifyResetPasswordOtpView(APIView):
 
 
 class ResetPasswordView(APIView):
+    permission_classes=[permissions.AllowAny]
     @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request):
         ser= ResetPasswordSerializers(data=request.data)
@@ -254,3 +259,53 @@ class LogoutView(APIView):
             return Response({"message": "Logout successful"}, status=status.HTTP_205_RESET_CONTENT)
         except Exception as e:
             return Response({"error": "Failed to logout. Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        
+        
+        
+class GoogleLoginAuthView(APIView):
+    permission_classes = [permissions.AllowAny]
+    
+    @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
+    def post(self,request):
+        
+        ser=GoogleAuthSerializers(data=request.data)
+        ser.is_valid(raise_exception=True)
+        token=ser.validated_data['token']
+        try:
+            idinfo= id_token.verify_oauth2_token(
+                token,
+                google_requests.Request(),
+                settings.GOOGLE_CLIENT_ID
+            )
+            email=idinfo['email']
+            with transaction.atomic():
+                user, created = User.objects.get_or_create(
+                    email=email,
+                    defaults={
+                        'is_verify': True,
+                    }
+                )
+                if created:
+                    user.set_unusable_password() 
+                    user.save()
+                refresh = RefreshToken.for_user(user)
+                return Response({
+                    "message": "Login Successful",
+                    "is_new_user": created,
+                    "tokens": {
+                        "access": str(refresh.access_token),
+                        "refresh": str(refresh)
+                    }
+                },status.HTTP_200_OK)
+                
+            
+            
+        except ValueError:
+            return Response({"error": "Invalid or expired Google token"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            
+            
+            
+        
+    
