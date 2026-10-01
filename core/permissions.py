@@ -20,6 +20,15 @@ class IsProjectOwner(permissions.BasePermission):
         return obj.role.project.owner == request.user
     
 
+
+class IsRoleOwner(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+                    return True
+        return obj.project.owner == request.user
+        
+    
+    
 class IsProjectMember(permissions.BasePermission):
     
     def has_object_permission(self, request, view, obj):
@@ -29,6 +38,11 @@ class IsProjectMember(permissions.BasePermission):
         ).exists()
 
 
+class IsProjectownerRemove(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+            if request.method in permissions.SAFE_METHODS:
+                        return True
+            return obj.project.owner == request.user
+            
+        
 
-
-"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzg3ODkxNDUxLCJpYXQiOjE3ODc0NTk0NTEsImp0aSI6Ijk3ZDM0NWQzNmEwYjQ0ZjFhYTY5NTRlZmVmM2Q4NTc3IiwidXNlcl9pZCI6IjJkNDE3YjlkLTBhNDItNDdmNC04OGM3LTc4YTBlYzE2NmM0NSJ9.aYMLkNXcbSZIvfE4hC5LYH2j-bjmzKdfiybzlzLAkww"

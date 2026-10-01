@@ -13,7 +13,8 @@ from .views import (
     SingleApplictionDetils,
     AppliedUserAccpetedApplictionView,
     AppliedUserApplicationDetailView,
-    UserJoinProjectDetiles
+    UserJoinProjectDetiles,
+    RemoveMemberView
 )
 
 router = DefaultRouter()
@@ -25,15 +26,17 @@ urlpatterns += [
     path("apply_appliction/<uuid:roleNeed_id>/", ApplictionView.as_view(), name="appliction"),
     path("withdraw_appliction/<uuid:appliction_id>/", WithdrawAppliction.as_view(), name="withdraw_app"),
     path("accpect_appliction/<uuid:appliction_id>/", AccpectAppliction.as_view(), name="accpect_app"),
-    path("reject_appliction/<uuid:appliction_id>/", RejectAppliction.as_view(), name="rej_app"),
-    path("leave_project/<uuid:project_id>/", LeaveProjectView.as_view(), name="leave_proj"),
+    path("reject_appliction/<uuid:appliction_id>/", RejectAppliction.as_view(), name="rejected_app"),
+    path("leave_project/<uuid:project_id>/", LeaveProjectView.as_view(), name="leave_project"),
+    path("remove-member/<uuid:project_id>/<uuid:user_id>/",RemoveMemberView.as_view(),name="remove_member"),
     path('role/appliction/pending/<uuid:role_id>/',RoleApplictionPendingListView.as_view(),name='pending_appliction'),
-    path('role/appliction/accpect/<uuid:role_id>/',RoleApplictionAccpectedListView.as_view(),name='pending_appliction'),
-    path('role/appliction/reject/<uuid:role_id>/',RoleApplictionRejectedListView.as_view(),name='pending_appliction'),
-    path('role/appliction/get/<uuid:appliction_id>/',SingleApplictionDetils.as_view(),name="getsingle-appliction"),
+    path('role/appliction/accpect/<uuid:role_id>/',RoleApplictionAccpectedListView.as_view(),name='accpect_appliction'),
+    path('role/appliction/reject/<uuid:role_id>/',RoleApplictionRejectedListView.as_view(),name='reject_appliction'),
+    path('role/appliction/detile/<uuid:appliction_id>/',SingleApplictionDetils.as_view(),name="getsingle-appliction"),
     path('applied/appliction/all/',AppliedUserApplicationDetailView.as_view(),name="applied_userappliction_list"),
-    path('applied/appliction/<uuid:application_id>/',AppliedUserApplicationDetailView.as_view(),name="applied_userappliction_list"),
+    path('applied/appliction/detile/<uuid:application_id>/',AppliedUserApplicationDetailView.as_view(),name="applied_userappliction_detail"),
     path('applied/appliction/accpeted/',AppliedUserAccpetedApplictionView.as_view(),name="applied_user_accpeted_appliction"),
     path('applied/joinproject/',UserJoinProjectDetiles.as_view(),name="join_project_list")
+    
     
 ]

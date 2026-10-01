@@ -32,7 +32,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         if obj.project:
             return {
                 "id": str(obj.project.id),
-                "title": obj.project.title,
+                "project_name": obj.project.project_name,
                 "stage": obj.project.stage,
             }
         return None

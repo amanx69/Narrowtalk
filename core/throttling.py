@@ -3,17 +3,17 @@ from rest_framework.throttling import UserRateThrottle,AnonRateThrottle ,ScopedR
 
 
 
-    
-class PostCreatethrottle(UserRateThrottle):
-    scope='post_create'
+    #! project
+class ProjectCreatethrottle(UserRateThrottle):
+    scope='Project_create'
  
-class PostUpdatethrottle(UserRateThrottle):
-    scope='post_update'   
+class ProjectUpdatethrottle(UserRateThrottle):
+    scope='Project_update'   
 
-class PostDeletethrottle(UserRateThrottle):
-    scope='post_delete'   
+class ProjectDeletethrottle(UserRateThrottle):
+    scope='Project_delete'   
     
-    
+#! appliction    
 class ApplictionCreatethrottle(UserRateThrottle):
     scope='appliction_create'
     
@@ -25,7 +25,7 @@ class ApplictionRejectthrottle(UserRateThrottle):
     scope='appliction_reject'
     
     
-    
+    #! role
 class RoleCreatethrottle(UserRateThrottle):
     scope='role_create'
     
@@ -36,7 +36,7 @@ class RoleDeletethrottle(UserRateThrottle):
 class RoleUpdatethrottle(UserRateThrottle):
     scope='role_update'
 
-
+#! for post feathures
 class commentCreatethrottle(UserRateThrottle):
     scope='comment_create'
     
@@ -51,3 +51,19 @@ class ProfileUpdateThrottle(UserRateThrottle):
     
 class ProfileLikeThrottle(UserRateThrottle):
     scope='profile_like'
+    
+class RemoveMemberThrottle(UserRateThrottle):
+    scope="remove_owner"
+    
+    
+    
+#TODO chatGroupe throttle 
+
+
+
+
+# feedBack Throttle
+
+class FeedbackThrottle(UserRateThrottle):
+    scope="feedback"
+    

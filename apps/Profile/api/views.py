@@ -34,7 +34,7 @@ class ProfileView(RetrieveUpdateAPIView):
         return self.request.user.user_profile
 
     def retrieve(self, request, *args, **kwargs):
-        cache_key = f"user_profile_v2_:{request.user.id}"
+        cache_key = f"user_profile_v1_:{request.user.id}"
         cached_data = cache.get(cache_key)
         if cached_data is not None:
             return Response(cached_data)
@@ -44,7 +44,9 @@ class ProfileView(RetrieveUpdateAPIView):
         return Response(serializer.data)
     def perform_update(self, serializer):
         profile = serializer.save()
-        cache.delete(f"user_profile:{profile.user.id}")
+        cache.delete(f"user_profile_v1_:{profile.user.id}")
+        # delete the cache of otherprofile if other user profile update
+        cache.delete(f"other_profile_v2_:{profile.user.id}") 
         
         
 
@@ -52,7 +54,7 @@ class ProfileView(RetrieveUpdateAPIView):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def ShareProfile(request,user_id):
-    url=f'{config('backend_url')}api/v1/Profile/other_profile/{user_id}/' #TODO change in prods
+    url=f"{config('BASE_URL')}/api/v1/Profile/other_profile/{user_id}/" #TODO change in prods
     return Response(url,200)
 
 
@@ -74,24 +76,34 @@ class GetOtherUserProfile(RetrieveAPIView):
     permission_classes=[IsAuthenticated]
     serializer_class=OtherUserProfileSerializer
     
-    def get_object(self):
+    
+    def get(self, request, *args, **kwargs):
         user_id = self.kwargs.get('user_id')
+
         from apps.safety.models import UserBlock
         is_blocked = UserBlock.objects.filter(
-            blocker=self.request.user, blocked_user_id=user_id
+            blocker=request.user, blocked_user_id=user_id
         ).exists() or UserBlock.objects.filter(
-            blocker_id=user_id, blocked_user=self.request.user
+            blocker_id=user_id, blocked_user=request.user
         ).exists()
         
         if is_blocked:
-            # Fake 404 error if blocked
             raise NotFound("This profile is unavailable or has been deleted.")
+        cache_key = f"other_profile_v2_:{user_id}"
+        cached_data = cache.get(cache_key)
+        
+        if cached_data is not None:
+            return Response(cached_data)
         profile = get_object_or_404(
             Profile.objects.prefetch_related('user__projects_owner'),
             user__id=user_id
         )
-        return profile
-   
+        serializer = self.get_serializer(profile)
+        cache.set(cache_key, serializer.data, timeout=300) 
+        
+        return Response(serializer.data)
+    
+  
     
     
     

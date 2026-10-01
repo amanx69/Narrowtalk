@@ -28,11 +28,10 @@ class UserManage(BaseUserManager):
 class User(AbstractBaseUser,PermissionsMixin):
     
     id= models.UUIDField(primary_key=True, unique=True,editable=False,default=uuid.uuid4)
-    email= models.EmailField(unique=True)
+    email= models.EmailField(unique=True,null=False,blank=False)
     is_staff= models.BooleanField(default=False)
     is_active= models.BooleanField(default=True)
     is_verify= models.BooleanField(default=False)
-    in_project_count=models.PositiveIntegerField(default=0) 
     created_at= models.DateTimeField(auto_now_add=True)
     notifiction_enable=models.BooleanField(default=True)
     
@@ -69,7 +68,7 @@ class User(AbstractBaseUser,PermissionsMixin):
 class Emailverifiction(models.Model):
     user= models.ForeignKey(User,on_delete=models.CASCADE)
     id= models.UUIDField(primary_key=True, unique=True,editable=False,default=uuid.uuid4)
-    otp=models.CharField(unique=True)
+    otp=models.CharField()
     purpose_= [
         ("RESETPASSWORD","resetpassword"),
         ("VERIFY","verify")

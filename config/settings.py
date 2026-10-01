@@ -55,17 +55,14 @@ INSTALLED_APPS = [
     'django_celery_results',
     "channels",
     "corsheaders",
-    'silk',
     'django_filters',
     'cloudinary',
     'drf_spectacular',
-    "debug_toolbar",
     
   
 ]
 
 MIDDLEWARE = [   
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -74,14 +71,14 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'silk.middleware.SilkyMiddleware',
+  
   
 ]
 
 #TODO remove in prod
-SILKY_AUTHENTICATION = True
-SILKY_AUTHORISATION = True
-SILKY_PYTHON_PROFILER = True
+# SILKY_AUTHENTICATION = True
+# SILKY_AUTHORISATION = True
+# SILKY_PYTHON_PROFILER = True
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
@@ -108,7 +105,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
+            "hosts": [config('REDIS_URL', default='redis://127.0.0.1:6379/1')],
         },
     },
 }
@@ -125,6 +122,7 @@ DATABASES = {
             'PASSWORD': config('password', default=''),
             'HOST': config('host', default='localhost'),
             'PORT': config('port', default='5432'),
+            'CONN_MAX_AGE': 60,
         }
     }
 
@@ -159,18 +157,12 @@ REST_FRAMEWORK = {
         'profile_update': '10/m',
         'profile_like': '30/m',
         'remove_owner':"10/m",
-        'feedback':"2/h",
+        'feedback':"2/m",
   
     }
    
     
 }
-INTERNAL_IPS = [
- 
-    "127.0.0.1",
-    
-  
-]
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -214,8 +206,8 @@ AUTH_USER_MODEL= "account.User"
 
 
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 
@@ -227,7 +219,7 @@ EMAIL_USE_TLS = True
 EMAIL_PORT = config('email_port')
 EMAIL_HOST_USER = config('email_host')
 EMAIL_HOST_PASSWORD = config('email_pass')
-#EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend' #TODO remove in prod
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend' #TODO remove in prod
 
 
 
@@ -245,7 +237,7 @@ LIVEKIT_API_SECRET=config('LIVEKIT_API_SECRET')
 CORS_ALLOW_ALL_ORIGINS = True   # Allow all in dev (emulator, Postman, etc.)
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [
-    "http://10.0.2.2:8000",     # Android emulator
+        # Android emulator
     "http://127.0.0.1:8000",    # iOS simulator / browser
     "http://localhost:8000",
 ]

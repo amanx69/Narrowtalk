@@ -3,22 +3,44 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from apps.Profile.models import Skill
 from ..models import Project, RoleNeeded ,Application,Membership
-from apps.Profile.api.serializer import SkillSerializer ,MemebrProfileSerializer ,ApplictionProfileSerializer
+from apps.Profile.api.serializer import SkillSerializer ,MemebrProfileSerializer ,ApplictionProfileSerializer ,ProjectProfileSerializer
 
 
-#! this ser used for create a project and give current user project and {id/}
+#! this ser used for create only create the project
+
+class CompressedProjectFileField(serializers.FileField):
+    def to_representation(self, value):
+        url = super().to_representation(value)
+        if url and '/upload/' in url:
+            if url.endswith('.pdf'):
+                return url
+            if url.endswith(('.mp4', '.mov', '.avi', '.webm')):
+                return url.replace('/upload/', '/upload/q_auto,f_auto,w_720/')
+                
+            
+            return url.replace('/upload/', '/upload/q_auto,f_auto,w_1080/')
+        return url
+          
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = ("id","title", "description", "stage", "created_at",'like_count','comment_count','save_count')
+        fields = ("id","title",'project_name', "description", "stage", "created_at",'like_count','comment_count','save_count','project_file')
 
     def validate_title(self, value):
         if not value or not value.strip():
             raise serializers.ValidationError("Title cannot be empty or whitespace only.")
         if len(value.strip()) < 3:
             raise serializers.ValidationError("Title must be at least 3 characters long.")
-        if len(value) > 150:
-            raise serializers.ValidationError("Title must not exceed 150 characters.")
+        if len(value) > 300:
+            raise serializers.ValidationError("Title must not exceed 300 characters.")
+        return value.strip()
+    def validate_project_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Project name cannot be empty or whitespace only.")
+        if len(value.strip()) < 3:
+            raise serializers.ValidationError("Project name must be at least 3 characters long.")
+        if len(value) > 50:
+            raise serializers.ValidationError("Project name must not exceed 50 characters.")
         return value.strip()
 
     def validate_description(self, value):
@@ -34,6 +56,41 @@ class ProjectSerializer(serializers.ModelSerializer):
         if value not in valid_stages:
             raise serializers.ValidationError(f"Stage must be one of: {', '.join(valid_stages)}")
         return value
+ 
+    def validate_project_file(self, value):
+        if not value:
+            return value
+            
+        allowed_types = [
+            'image/jpeg', 'image/png', 'image/webp',  # Images
+            'video/mp4', 'video/webm',                # Videos
+            'application/pdf'                         # PDF
+        ]
+        if value.content_type not in allowed_types:
+            raise serializers.ValidationError("Only JPG/PNG images, MP4/WEBM videos, and PDFs are allowed.")
+        
+        max_size = 50 * 1024 * 1024  
+        if value.size > max_size:
+            raise serializers.ValidationError("File size must be under 50MB.")
+        return value
+ #! this ser return project list of current user with given fields
+class ProjectListSerializer(serializers.ModelSerializer):
+    owner=ProjectProfileSerializer(source='owner.user_profile')
+    project_file = CompressedProjectFileField(read_only=True)
+    class Meta:
+        model=Project #! think about show like in project detail
+        fields=('id','project_name',"title","description",'stage','created_at','owner','project_file')
+        read_only_fields=fields   
+#! this ser used for get Project detiles project
+
+class ProjectDetailSerializer(serializers.ModelSerializer):
+    owner=ProjectProfileSerializer(source='owner.user_profile')
+    project_file = CompressedProjectFileField(read_only=True)
+    class Meta:
+        model=Project #! think about show like in project detail
+        fields=('id','project_name',"title",'project_file',"description",'stage','created_at','owner','like_count','save_count','comment_count','view_count')
+        read_only_fields=fields
+    
         
 
 #! this ser user for give project owner role list
@@ -42,14 +99,14 @@ class GetJobRoleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RoleNeeded
-        fields = ("id", "title", "description", "slots_available", "required_skills", "is_open", "created_at")
+        fields = ("id", "title", "description", "slots_available", "required_skills", "is_open", "created_at","role","is_complete")
 
 #! this ser used for create a role
 class CreateJobRoleSerializer(serializers.ModelSerializer):
     required_skills = SkillSerializer(
         many=True,
         write_only=True,
-        required=False
+        required=True
     )
 
     class Meta:
@@ -68,6 +125,8 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
 
     def validate_description(self, value):
         """Validate description if provided."""
+        if not value:
+            raise serializers.ValidationError("description must be included")
         if value and len(value.strip()) < 5:
             raise serializers.ValidationError("Description must be at least 5 characters long.")
         return value
@@ -89,7 +148,7 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
         for s in skills_data:
             name = s.get("name", "").strip()
             if name:
-                skill = Skill.objects.create(name=name)
+                skill,_ = Skill.objects.get_or_create(name=name)
                 skill_objs.append(skill)
         if skill_objs:
             role.required_skills.set(skill_objs)
@@ -126,7 +185,7 @@ class ApplictionSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Application
-        fields=("id",'message','status','apply_role_purpose','github_link','portfolio_link')
+        fields=("id",'message','status','apply_role_purpose','github_link','portfolio_link','project_link')
 
     def validate_message(self, value):
         
@@ -146,7 +205,7 @@ class ApplictionSerializer(serializers.ModelSerializer):
     def validate(self, data):
 
         message = data.get('message', '').strip() if data.get('message') else ''
-        purpose = data.get('apply_role_purpose', '')
+        purpose = data.get('apply_role_purpose','')
         
         if not message and not purpose:
             raise serializers.ValidationError("Either a message or role purpose must be provided.")
@@ -160,20 +219,29 @@ class ApplictionSerializer(serializers.ModelSerializer):
         
 #! this ser used for project owner appliction list
 class GetapplictionSerializar(serializers.ModelSerializer):
-    user= ApplictionProfileSerializer(source='user.user_profile',read_only=True)
+    applied_user= ApplictionProfileSerializer(source='user.user_profile',read_only=True)
     class Meta:
-        model=Application
-        fields=('message','apply_role_purpose','status','created_at','github_link','portfolio_link','user')
+        model=Application 
+        fields=('id','message','apply_role_purpose','status','created_at','applied_user')
         read_only_fields=fields    
+    
+class GetapplictionDetileSerializar(serializers.ModelSerializer):
+    applied_user= ApplictionProfileSerializer(source='user.user_profile',read_only=True)
+    class Meta:
+        model=Application 
+        fields=('message','apply_role_purpose','status','created_at','github_link','portfolio_link','applied_user')
+        read_only_fields=fields    
+    
     
     
 #! this ser used for project owner list of his memebrs
 class MemebrSerializer(serializers.ModelSerializer):
     user= MemebrProfileSerializer(source='user.user_profile',read_only=True)
+    user_id=serializers.UUIDField(source="user.id",read_only=True)
     
     class Meta:
         model=Membership
-        fields=('role_title','joined_at','is_active','user')
+        fields=('id','role_title','joined_at','is_active','user','user_id')
         
      
         
@@ -182,14 +250,25 @@ this all ser handle applied user list of appliction
 and how many i join project
 '''
 
-class AppliedApplictionSerializer(serializers.ModelSerializer):
-    
+class AppliedApplictionDetilesSerializer(serializers.ModelSerializer):
+    role= GetJobRoleSerializer(read_only=True)
+    project=ProjectDetailSerializer(source='role.project',read_only=True)
+    project_owner= ApplictionProfileSerializer(source='role.project.owner.user_profile',read_only=True) #! this er return project owner
     class Meta:
         model=Application
-        fields=('message','apply_role_purpose','status','created_at','github_link','portfolio_link',)
-        
+        fields=('id','message','apply_role_purpose','status','created_at','github_link','portfolio_link','role','project','project_owner',)
+
+class AppliedApplictionListSerializer(serializers.ModelSerializer):
+    project_name=serializers.CharField(source='role.project.project_name', read_only=True)
+    role_title = serializers.CharField(source='role.title', read_only=True)
+    class Meta:
+        model=Application
+        fields=('id','message','apply_role_purpose','status','created_at','project_name', 'role_title')
+
+          
 class ProjectJoinSerializer(serializers.ModelSerializer):
-    project=ProjectSerializer(read_only=True)
+    project=ProjectListSerializer()
     class Meta:
         model=Membership
         fields = ('is_active','role_title','joined_at','project')
+

@@ -90,3 +90,6 @@ class ResetPasswordSerializers(serializers.Serializer):
     def validate_password(self,value):
         validate_password(value)
         return value
+    
+class GoogleAuthSerializers(serializers.Serializer):
+    token=serializers.CharField(required=True)

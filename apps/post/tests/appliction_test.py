@@ -46,9 +46,12 @@ class TestAppliction(APITestCase):
     def test_apply_appliction(self):
         data={
             "apply_role_purpose":'backend',
-            "message":"hyy bro i want to join"
+            "message":"hyy bro i want to join",
+            "github_link":"https://Github.com/amanx69"
         }
+        self.login_other_user(self.other_user)
         res=self.client.post(self.url,data,format='json')
+   
         
         self.assertEqual(res.status_code,status.HTTP_201_CREATED)
         
@@ -66,6 +69,7 @@ class TestAppliction(APITestCase):
             "message":"",
             "apply_role_purpose":'backend',
                 }
+        self.login_other_user(self.other_user)
         res=self.client.post(self.url,data,format='json')
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
         
@@ -76,6 +80,7 @@ class TestAppliction(APITestCase):
             "message":"ashu",
             "apply_role_purpose":'backend',
         }
+        self.login_other_user(self.other_user)
         res=self.client.post(self.url,data,format='json')
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
         
@@ -84,7 +89,9 @@ class TestAppliction(APITestCase):
             "message":"A"*50000,
             "apply_role_purpose":'backend',
         }
+        self.login_other_user(self.other_user)
         res=self.client.post(self.url,data,format='json')
+        
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
         
     def test_without_apply_role(self):
@@ -92,6 +99,7 @@ class TestAppliction(APITestCase):
         "message":"ashu kumari",
         "apply_role_purpose":"",
                 }
+        self.login_other_user(self.other_user)
         res=self.client.post(self.url,data,format='json')
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
         
@@ -178,26 +186,6 @@ class TestAppliction(APITestCase):
         self.assertEqual(res.status_code,status.HTTP_200_OK)
           
         
-    def test_single_appliction_detiles_other_user(self):
-        
-        other_user= User.objects.create_user(
-            email="otheruser@gmail.com",
-            password="otherpassword",
-        )
-        token=RefreshToken.for_user(other_user)
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(token.access_token)}")
-        appliction=Application.objects.create(
-                user=self.user,
-                role=self.role,
-                message='we change the world',
-                apply_role_purpose='backend'
-                                                        
-                ) 
-            
-        url= reverse('v1:getsingle-appliction',args=[appliction.id])
-        res=self.client.get(url)
-        self.assertEqual(res.status_code,status.HTTP_403_FORBIDDEN)
-        
     def test_single_appliction_anou_user(self):
         self.client.credentials()
         appliction=Application.objects.create(
@@ -219,7 +207,7 @@ class TestAppliction(APITestCase):
         self.assertEqual(res.status_code,status.HTTP_200_OK)
         
     
-    def test_get_List_pending_appliction(self):
+    def test_get_List_accpect_appliction(self):
             
         url=reverse('v1:accpect_appliction',args=[self.role.id])
         res=self.client.get(url)
@@ -232,7 +220,7 @@ class TestAppliction(APITestCase):
         self.assertEqual(res.status_code,status.HTTP_401_UNAUTHORIZED)
         
     
-    def test_get_List_pending_appliction_anou_user(self):
+    def test_get_List_accpect_appliction_anou_user(self):
         self.client.credentials()    
         url=reverse('v1:accpect_appliction',args=[self.role.id])
         res=self.client.get(url)

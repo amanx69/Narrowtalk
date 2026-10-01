@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
 from apps.post.models import Project
-from .models import Report
+from apps.safety.models import Report
 User= get_user_model()
 
 

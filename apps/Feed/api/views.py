@@ -46,8 +46,6 @@ class CommentProjectView(APIView):
     
     def post(self,request,project_id):
         project=get_object_or_404(Project,id=project_id)
-        if project.owner ==request.user:
-            raise PermissionDenied("you don't comment own projecr")
         ser=CommentSerlizer(data=request.data,context={'request':request})
         ser.is_valid(raise_exception=True)
         with transaction.atomic():
@@ -72,7 +70,7 @@ class DeleteComment(APIView):
     def delete(self,request,project_id,comment_id):
         comment=get_object_or_404(Projectcomment,id=comment_id,project=project_id,user=request.user)
         comment.delete()
-        return Response({"message": "Comment deleted successfully"},status.HTTP_200_OK)
+        return Response({"message": "Comment deleted successfully"},status.HTTP_204_NO_CONTENT)
         
     
     
@@ -130,8 +128,8 @@ class FeedView(APIView):
         .exclude(owner=request.user).exclude(owner_id__in=blocked_users_ids) \
         .order_by('-created_at') \
         .annotate(
-            is_liked=Exists(Project.objects.filter(project=OuterRef('pk'), user=request.user)),
-            is_saved=Exists(Projectsave.objects.filter(project=OuterRef('pk'), user=request.user))
+            is_liked_by_user=Exists(Project.objects.filter(project=OuterRef('pk'), user=request.user)),
+            is_saved_by_user=Exists(Projectsave.objects.filter(project=OuterRef('pk'), user=request.user))
         ) 
         paginator = FeedPegination()
         page = paginator.paginate_queryset(data, request)

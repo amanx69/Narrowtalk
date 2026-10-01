@@ -20,6 +20,12 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     def unread_count(self, request):
         count = request.user.notifications.filter(is_read=False).count()
         return Response({"unread_count": count})
+    
+    @action(detail=False, methods=["get"])
+    def unread_notification(self, request):
+        notification = request.user.notifications.filter(is_read=False)
+        ser=self.get_serializer(data=notification,many=True)
+        return Response({"data": ser.data})
 
     @action(detail=True, methods=["post"])
     def mark_read(self, request, pk=None):

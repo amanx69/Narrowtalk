@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
 from django_ratelimit.decorators import ratelimit
 import datetime
+from apps.Profile.models import Profile
 from django.utils import timezone 
 from rest_framework import generics
 from django.db import transaction
@@ -33,24 +34,42 @@ from .serializers import (
     
     
     )
+from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Q
 from core.permissions import IsOwnerOrReadOnly,Isowner,IsProjectOwner ,IsProjectMember,IsRoleOwner ,IsProjectownerRemove
-from .service import _safe_notify ,Update_profile_project_join ,decrement_profile_project_join
+from .service import( _safe_notify ,
+Update_profile_project_join ,
+decrement_profile_project_join ,
+Increment_Project_Create_Count,
+Decrement_Project_Create_Count
+)
 from apps.notification.api.service import (
   
     notify_application_received,
     notify_application_accepted,
     notify_application_rejected,
     notify_application_withdrawn,
+    notify_remove_member,
+    notify_member_left
 
 )
-from services.email_services import AccpectedAppliction_email ,RemoveProjectMail
+from services.email_services import (
+    AccpectedAppliction_email ,
+    MemberLeftProjectMail,                            
+    RemoveProjectMail,
+    NewApplicationReceivedMail
+    )
+from apps.Chats.service import  join_in_project_groupe ,remove_in_project_groupe
 
 
 class ProjectView(ModelViewSet):
     permission_classes = [IsOwnerOrReadOnly, IsAuthenticated]
     serializer_class = ProjectSerializer
-    filter_backends=[filters.SearchFilter]
-    search_fields=['^project_name','is_active']
+    filter_backends=[filters.SearchFilter,DjangoFilterBackend]
+    search_fields=['^project_name','roles__role','roles__title']
+    filterset_fields = ['stage']
+    
+
     #! setup throttles
     def get_throttles(self):
         if self.action =='create':
@@ -74,7 +93,7 @@ class ProjectView(ModelViewSet):
     def get_serializer_class(self): 
         if self.action =="retrieve":
             return  ProjectDetailSerializer
-        if self.action =="list":
+        if self.action =="list": #! used for list of project of current user
             return ProjectListSerializer
         
         return self.serializer_class
@@ -85,7 +104,12 @@ class ProjectView(ModelViewSet):
         return Project.objects.all()
 
     def perform_create(self, serializer):
-            project = serializer.save(owner=self.request.user)
+            
+        project = serializer.save(owner=self.request.user)
+        Increment_Project_Create_Count(project.owner.user_profile.id)
+        cache.delete(f"user_profile_v1_:{project.owner.id}")
+        cache.delete(f"other_profile_v2_:{project.owner.id}")
+
           
 
     def partial_update(self, request, *args, **kwargs):
@@ -93,12 +117,29 @@ class ProjectView(ModelViewSet):
         ser = self.get_serializer(instance, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         project = ser.save()
+        cache.delete(f"project_detail_v1_:{project.id}")
         return Response(ser.data)
 
     def perform_destroy(self, instance, *args, **kwargs):
         instance.is_active = False
         instance.is_delete=True
+        if instance.owner.user_profile.project_count >0:
+            Decrement_Project_Create_Count(instance.owner.user_profile.id)
         instance.save(update_fields=["is_active",'is_delete'])
+        cache.delete(f"user_profile_v1_:{instance.owner.id}")
+        cache.delete(f"other_profile_v2_:{instance.owner.id}")
+        
+    def retrieve(self, request, *args, **kwargs):
+        project_id = self.kwargs.get('pk')
+        cache_key = f"project_detail_v1_:{project_id}"
+        
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
+            
+        response = super().retrieve(request, *args, **kwargs)
+        cache.set(cache_key, response.data, timeout=3600) 
+        return response
   #! create a role and get all project role 
     @action(detail=True, methods=["get", "post"], url_path="create_job_role")
     def roles(self, request, pk=None): 
@@ -134,13 +175,13 @@ class ProjectView(ModelViewSet):
     @action(detail=True, methods=['GET'], url_path="Project_memeber")
     def get_project_member(self,request,pk=None):
         project=self.get_object()
-        cache_member=cache.get(f'project_memeber{project.id}')
-        if cache_member:
-            return Response(cache_member,status.HTTP_200_OK)
+        cache_member=cache.get(f'project_memeber_v1:{project.id}')
+        if cache_member is not None:
+            return Response({"data": cache_member}, status.HTTP_200_OK)
 
         data=Membership.objects.filter(project=project,is_active=True).select_related('user').order_by('joined_at')
         ser= MemebrSerializer(data,many=True)
-        cache.set(f'project_memeber{project.id}',ser.data,timeout=400)
+        cache.set(f'project_memeber_v1:{project.id}',ser.data,timeout=400)
         return Response({
             "data":ser.data
         },status.HTTP_200_OK)
@@ -167,8 +208,9 @@ class ProjectView(ModelViewSet):
         if project.owner != request.user:
             raise PermissionDenied('Only the owner can delete this role')
         with transaction.atomic():
-            role.project.role_count = F("role_count") - 1
-            role.project.save(update_fields=['role_count'])
+            if role.project.role_count > 0:
+                role.project.role_count = F("role_count") - 1
+                role.project.save(update_fields=['role_count'])
             role.delete()
         return Response({"message": f"Role '{role.title}' deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
         
@@ -190,7 +232,7 @@ class AccpectAppliction(APIView):
         appliction = get_object_or_404(Application, id=appliction_id,)
         self.check_object_permissions(request, appliction)
         if appliction.status == Application.Status.ACCEPTED:
-            return Response({"message": "Already accepted this application"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"message": "This application has already been accepted."}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             appliction.status = Application.Status.ACCEPTED
             
@@ -202,6 +244,8 @@ class AccpectAppliction(APIView):
                     'is_active': True
                 }
             )
+            #! jion in ProjectChat groupe
+            join_in_project_groupe(appliction.role.project,appliction.user,request)
             
             if appliction.role.slots_available > 0:
                 appliction.role.slots_available = F('slots_available') - 1
@@ -213,7 +257,7 @@ class AccpectAppliction(APIView):
             _safe_notify(notify_application_accepted, appliction)
             Update_profile_project_join.delay(appliction.user.user_profile.id)
             AccpectedAppliction_email.delay(appliction.id)
-            cache.delete(f'project_memeber{appliction.role.project.id}')
+            cache.delete(f'project_memeber_v1:{appliction.role.project.id}')# delete member
             cache.delete(f'single_appliction{appliction_id}')
             
         return Response({"message": f"{appliction.user.username} application accepted for post {appliction.role.project.project_name}"},status.HTTP_200_OK)
@@ -227,7 +271,7 @@ class RejectAppliction(APIView):
         appliction = get_object_or_404(Application, id=appliction_id)
         self.check_object_permissions(request,appliction)
         if appliction.status == Application.Status.REJECTED:
-            return Response({"message": "Already rejected this application"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"message": "This application has already been rejected."}, status=status.HTTP_400_BAD_REQUEST)
 
         appliction.status = Application.Status.REJECTED
         appliction.save(update_fields=["status"])            
@@ -240,12 +284,20 @@ class RejectAppliction(APIView):
 class RoleApplictionPendingListView(APIView):
     permission_classes = [IsAuthenticated,IsProjectOwner]
     
+    
     def get(self,request,role_id):
         role=get_object_or_404(RoleNeeded,id=role_id)
         if role.project.owner!= request.user:
             raise PermissionDenied('only owner see pending list')
-        
+        #! filter with username or  email
         appliction=Application.custom_objects.get_pending_appliction().filter(role=role).select_related('user').order_by('created_at')
+        search_query= request.query_params.get('search',None)
+        if search_query:
+              appliction = appliction.filter(
+                Q(user__user_profile__username__startswith=search_query) | 
+                Q(user__email__startswith=search_query)
+            )
+        
         ser=GetapplictionSerializar(appliction,many=True)
         return Response(ser.data,status.HTTP_200_OK)
         
@@ -312,13 +364,25 @@ class RemoveMemberView(generics.DestroyAPIView):
             if project.member_count > 0:
                 project.member_count = F('member_count') - 1
                 project.save(update_fields=['member_count'])
+                project.refresh_from_db(fields=['member_count']) 
+                #! after remove the user slot increment +1
+            accepted_app = Application.objects.filter(
+                        user=user, 
+                        role__project=project, 
+                        status=Application.Status.ACCEPTED
+                    ).order_by('-created_at').first()
+            if accepted_app:
+                accepted_app.role.slots_available = F('slots_available') + 1
+                accepted_app.role.save(update_fields=['slots_available'])
                 
             if user.user_profile.project_joined > 0:
                 user.user_profile.project_joined = F("project_joined") - 1
                 user.user_profile.save(update_fields=['project_joined'])
                 
-            #TODO send email and not notifiction
             RemoveProjectMail.delay(user.id,project.project_name)
+            _safe_notify(notify_remove_member, user.id, project.owner, project)
+            remove_in_project_groupe(project,user) #! remove user in project chat groupe
+            cache.delete(f'project_memeber_v1:{project.id}')# delete member cache
             instance.is_active=False
             instance.save(update_fields=['is_active'])
             
@@ -337,15 +401,34 @@ class LeaveProjectView(APIView):
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
         membership = get_object_or_404(Membership, project=project, user=request.user, is_active=True)
-        membership.is_active = False
         
-        if project.member_count > 0:
-            project.member_count = F('member_count') - 1
-            project.save(update_fields=['member_count'])
-        decrement_profile_project_join.delay(membership.user.user_profile.id)
-        membership.save(update_fields=["is_active"])
-        cache.delete(f'project_memeber{project_id}')
+        with transaction.atomic():
+        
+            if project.member_count > 0:
+                project.member_count = F('member_count') - 1
+                project.save(update_fields=['member_count'])
+                project.refresh_from_db(fields=['member_count']) 
+            #! after leave the user in project than increment slot the role 
+            accepted_app = Application.objects.filter(
+                user=request.user, 
+                role__project=project, 
+                status=Application.Status.ACCEPTED
+            ).order_by('-created_at').first()
+            
+            if accepted_app:
+                accepted_app.role.slots_available = F('slots_available') + 1
+                accepted_app.role.save(update_fields=['slots_available'])
+            decrement_profile_project_join.delay(membership.user.user_profile.id)
+            membership.is_active = False
+            membership.save(update_fields=["is_active"])  #TODO in future add send leave request the owner
+            role_title= accepted_app.role.title if accepted_app else None
+            MemberLeftProjectMail.delay(project.owner.id,request.user.id,project.project_name,role_title)
+            _safe_notify(notify_member_left,project.owner.id,membership.user,project)
+            remove_in_project_groupe(project,membership.user) #! remove the user  in project chat_groupe
+            
+            cache.delete(f'project_memeber_v1:{project.id}') # delete memebr cache
         return Response({"message": f"You have left post project {project.title}."})
+        
 
 
 class WithdrawAppliction(APIView): # TODO think about this api if need than not delete otherwise delete
@@ -366,18 +449,19 @@ class ApplictionView(APIView):
     throttle_classes=[ApplictionCreatethrottle]
     def post(self, request, roleNeed_id):
         role = get_object_or_404(RoleNeeded, id=roleNeed_id)
+        print(role)
         if role.project.owner == request.user:
-            raise PermissionDenied("you can't apply own project")
+            raise PermissionDenied("You cannot apply to roles within your own project.")
         if not role.is_open or role.slots_available <= 0:
             return Response({"detail": "This role is closed for applications."}, status=status.HTTP_400_BAD_REQUEST)
-
+#TODO infuture in any user apply than leave then reapply show application status reapply
         existing_app = Application.objects.filter(user=request.user, role=role).order_by('-created_at').first()
+        if Membership.objects.filter(user=request.user, project=role.project, is_active=True).exists():
+          return Response({"detail": "You are already an active member of this project."}, status=status.HTTP_400_BAD_REQUEST)
         
         if existing_app:
-            if existing_app.status == Application.Status.ACCEPTED:
-                return Response({"detail":"you already accepted for this role"}, status=status.HTTP_400_BAD_REQUEST)
-            elif existing_app.status == Application.Status.PENDING:
-                return Response({"detail":"please wait project owner response before re-appily"}, status=status.HTTP_400_BAD_REQUEST)
+            if existing_app.status == Application.Status.PENDING:
+                return Response({"detail":"Your previous application is still pending review."}, status=status.HTTP_400_BAD_REQUEST)
             elif existing_app.status == Application.Status.REJECTED:
                 #! 7-day cooldown period since their last application
                 days_since_applied = (timezone.now() - existing_app.created_at).days
@@ -391,12 +475,14 @@ class ApplictionView(APIView):
         ser = ApplictionSerializer(data=request.data, context={'request': request})
         ser.is_valid(raise_exception=True)
         with transaction.atomic():
+            #! if reapply appliction not increment the applaction 
             if not existing_app:
                 role.application_count = F('application_count') + 1
                 role.save(update_fields=['application_count']) 
             appliction = ser.save(role=role)
             _safe_notify(notify_application_received, appliction)
-            #TODO send mail to owner new applict
+            NewApplicationReceivedMail.delay(appliction.id)
+            
         return Response({"message": f"Applied successfully for {role.title} in {role.project.project_name}"}, status=status.HTTP_201_CREATED)
     
 #! this class give single and list of appliction for applide user
@@ -431,3 +517,4 @@ class UserJoinProjectDetiles(APIView):
 
 #! make project owner also send request to join
 #! user show and accpected
+#TODO create a api for filter a role 

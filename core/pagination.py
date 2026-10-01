@@ -9,6 +9,6 @@ class FeedPegination(CursorPagination):
     
     
 class HomeFeedPegination(CursorPagination):
-    page_size=30
+    page_size=10
     ordering='created_at'
     

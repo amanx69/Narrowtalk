@@ -33,7 +33,3 @@ class ApplictionManager(models.Manager):
                 return self.filter(status=s)
         
         
-class ProjectManager(models.Manager):
-    
-    def current_user_project(self,user):
-        return self.filter(user=user)

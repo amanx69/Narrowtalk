@@ -13,6 +13,8 @@ class ProjectLike(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
     
     
+    def __str__(self):
+        return f"{self.user.user_profile.username} like {self.project.project_name}"
     class Meta:
         unique_together = ['user','project']
         ordering=['created_at']
@@ -28,6 +30,16 @@ class Projectcomment(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
     
     
+    def __str__(self):
+        return f"{self.user.user_profile.username} comment on {self.project.project_name}"
+    
+    class Meta:
+        indexes=[
+            models.Index(fields=['created_at'])
+        ]
+        
+    
+    
 
 
 class Projectsave(models.Model):
@@ -35,6 +47,9 @@ class Projectsave(models.Model):
     user= models.ForeignKey(User,on_delete=models.DO_NOTHING,related_name="user_save")
     project=models.ForeignKey(Project,on_delete=models.CASCADE,related_name="project_save")
     created_at=models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f'{self.user.user_profile.username} save {self.project.project_name}'
     
     
     class Meta:

@@ -8,7 +8,7 @@ from django.core.cache import cache
     
 from  apps.account.models import Emailverifiction
 
-user=get_user_model()
+User=get_user_model()
 
 
 
@@ -30,7 +30,7 @@ class SignUpTestCase(APITestCase):
         
         response= self.client.post(self.url,self.valid_data)
         self.assertEqual(response.status_code,status.HTTP_201_CREATED)
-        self.assertEqual(user.objects.count(),1)
+        self.assertEqual(User.objects.count(),1)
         
         
     def test_duplicate_email(self):
