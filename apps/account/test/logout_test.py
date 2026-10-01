@@ -11,7 +11,7 @@ User=get_user_model()
 class LogoutTestCase(APITestCase):
     def setUp(self):
         cache.clear()
-        self.logout_url = reverse('logout')
+        self.logout_url = reverse('v1:logout')
         self.user = User.objects.create_user(
             email="test@example.com",
             password="testpassword"

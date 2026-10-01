@@ -43,10 +43,15 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data):
-        data = json.loads(text_data)
+        try:
+            data = json.loads(text_data)
+        except Exception:
+            return
 
         if data.get("action") == "mark_read":
             notif_id = data.get("notification_id")
+            if not notif_id:
+                return
 
             @database_sync_to_async
             def mark_read():
@@ -61,14 +66,13 @@ class NotificationConsumer(AsyncWebsocketConsumer):
                 "notification_id": notif_id,
             }))
 
-    # server se notification aaya → client ko bhejo
     async def send_notification(self, event):
         await self.send(text_data=json.dumps({
             "type":        "notification",
             "id":          event.get("id"),
-            "notif_type":  event["notif_type"],
-            "title":       event["title"],
-            "body":        event["body"],
+            "notif_type":  event.get("notif_type"),
+            "title":       event.get("title", ""),
+            "body":        event.get("body", ""),
             "project_id":  event.get("project_id"),
             "post_id":     event.get("post_id"),
             "sender_name": event.get("sender_name"),

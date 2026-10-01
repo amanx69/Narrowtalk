@@ -27,8 +27,7 @@ def notify(recipient_id, sender_id, notif_type, title, body, project_id=None):
     recipient = User.objects.filter(id=recipient_id).first()
     sender = User.objects.filter(id=sender_id).first() if sender_id else None
     project = Project.objects.filter(id=project_id).first() if project_id else None
-    print(recipient.id)
-    print(recipient.notifiction_enable)
+
 
     if not recipient:
         return None
@@ -139,3 +138,16 @@ def notify_member_left(recipient_id, member_user, project):
     )
 
 
+
+def notify_remove_member(recipient_id, project_owner, project):
+    owner_username = get_user_name(project_owner)
+    notify.delay(
+        recipient_id = recipient_id,
+        sender_id=project_owner.id,
+        project_id=project.id,
+        notif_type=Notification.Type.REMOVE_MEMBER,
+        title  = "Remove in project",
+        body  = f"{owner_username} Remove  Yoe in '{project.project_name}'.",
+        
+        
+    )

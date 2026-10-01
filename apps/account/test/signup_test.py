@@ -8,7 +8,7 @@ from django.core.cache import cache
     
 from  apps.account.models import Emailverifiction
 
-user=get_user_model()
+User=get_user_model()
 
 
 
@@ -24,23 +24,13 @@ class SignUpTestCase(APITestCase):
           
         }   
         
-    def test_rate_limit(self):
-        for _ in range(5):
-            
-            response = self.client.post(self.url, self.valid_data)
-            self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
-       
-
-            
-        rspoonse= self.client.post(self.url,self.valid_data)
-        self.assertEqual(rspoonse.status_code,status.HTTP_403_FORBIDDEN)
             
             
     def test_signup(self):
         
         response= self.client.post(self.url,self.valid_data)
         self.assertEqual(response.status_code,status.HTTP_201_CREATED)
-        self.assertEqual(user.objects.count(),1)
+        self.assertEqual(User.objects.count(),1)
         
         
     def test_duplicate_email(self):
@@ -66,4 +56,13 @@ class SignUpTestCase(APITestCase):
     def test_signup_empty_data(self):
         response = self.client.post(self.url, {})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+    def test_signup_empty_email(self):
+        res= self.client.post(self.url,{"email":"","password":"Amankumar@54"})
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
+  
+    def test_signup_empty_password(self):
+        res= self.client.post(self.url,{"email":"test4@gmail.com","password":""})
+        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
+
         

@@ -1,3 +1,5 @@
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 from django.core.mail import send_mail, EmailMultiAlternatives
 from celery import shared_task
 from django.conf import settings
@@ -5,65 +7,66 @@ from django.contrib.auth import get_user_model
 from ..models import Emailverifiction 
 import secrets
 User= get_user_model()
-              
+from decouple import config
+
+import hashlib
+from ..models import Emailverifiction
+from .service import gernate_otp
 
 @shared_task
 def send_verification_email(id):
-    
-    user= User.objects.get(id=id)
-    token=  secrets.token_urlsafe(32)
-    purose="VERIFY"
+    try:
+        user = User.objects.get(id=id)
+    except User.DoesNotExist:
+        return
+    otp = gernate_otp(user)
 
-    email= Emailverifiction.objects.create(
-        user=user,
-        token_hash=token,
-        purpose=purose
-    )
-    
-    link = f"http://localhost:8000/api/v1/auth/verify-email/{email.token_hash}/"
-
-#TODO make beautiful  and readable
-    html = f"""
-    <h2>Verify your email</h2>
-    <p>Click below:</p>
-    <a href="{link}"> ClickVerify Email</a>
-    """
+    context = {
+        'username': user.username,
+        'otp': otp
+    }
+    html_content = render_to_string('emails/verify_email.html', context)
+    text_content = strip_tags(html_content)
 
     msg = EmailMultiAlternatives(
-        "Verify your email",
-        "Click link to verify",
-        "noreply@yourapp.com",
-        [user.email]
+        subject="Your Email Verification OTP",
+        body=text_content,
+        from_email="noreply@Narrow.com",
+        to=[user.email],
     )
-    msg.attach_alternative(html, "text/html")
+
+    msg.attach_alternative(html_content, "text/html")
     msg.send()
+
+
+
+
+
 
 @shared_task
 def send_reset_password_email(id):
-    
-    user= User.objects.get(id=id)
-    token=  secrets.token_urlsafe(32)
-    purose="RESETPASSWORD"
-    email= Emailverifiction.objects.create(
-        user=user,
-        token_hash=token,
-        purpose=purose
-    )
-    
-    link = f"http://localhost:8000/api/v1/auth/reset-password/{email.token_hash}/"
+    try:
+        user = User.objects.get(id=id)
+    except User.DoesNotExist:
+        return
+    otp = gernate_otp(user)
 
-#TODO make beautiful  and readable
-    html = f"""
-    <h2>Reset your password</h2>
-    <p>Click below:</p>
-    <a href="{link}"> ClickReset Password</a>
-    """
+    context = {
+        'username': user.username,
+        'otp': otp
+    }
+    html_content = render_to_string('emails/reset_password.html', context)
+    text_content = strip_tags(html_content)
 
     msg = EmailMultiAlternatives(
-        "Reset your password",
-        "Click link to reset your password",
-        "noreply@yourapp.com",
-        [user.email]
+        subject="Password Reset OTP",
+        body=text_content,
+        from_email="noreply@Narrow.com",
+        to=[user.email],
     )
-    msg.attach_alternative(html, "text/html")
+
+    msg.attach_alternative(html_content, "text/html")
     msg.send()
+
+
+ 

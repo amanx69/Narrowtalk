@@ -5,7 +5,7 @@ from ..models import Emailverifiction
 from .task import send_verification_email
 from django.contrib.auth import authenticate
 User= get_user_model()
-
+from django.core.validators import validate_email
 class SignUpSerializer(serializers.ModelSerializer):
     
     class Meta:
@@ -13,47 +13,83 @@ class SignUpSerializer(serializers.ModelSerializer):
         fields=("email","password")
          
     def create(self, validated_data):
-        
         user= User.objects.create_user(
             email= validated_data['email'],
             password=validated_data['password'],
-            
         )
         send_verification_email.delay(id=str(user.id))
+        print(user.id)
             
         return user
-
-    def validate_email(self,value):
-        if User.objects.filter(email=value):
-            raise serializers.ValidationError("email already exites")
-        
-        return value
-     
-    
     def validate_password(self,value):
         validate_password(value)
         return value
     
     
 class LoginSerlizer(serializers.Serializer):
-    email = serializers.EmailField()
+    email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True)
     
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
+        
+        if not email:
+            raise serializers.ValidationError("email is required")
+        if not password:
+            raise serializers.ValidationError("password is required")
+            
         user = authenticate(email=email, password=password)
         if not user:
             raise serializers.ValidationError("Invalid email or password")
         
         if not user.is_verify:
-            raise serializers.ValidationError("Email not verified")
-        
-        if not user.is_active:
-            raise serializers.ValidationError("Account is disabled")
+            from .task import send_verification_email
+            send_verification_email.delay(id=str(user.id))
+            raise serializers.ValidationError({
+                "message": "Email not verified. A new OTP has been sent.",
+                "error_code": "EMAIL_NOT_VERIFIED"
+                    },)
+                    
         
         attrs['user'] = user
         return attrs
     
     
+class VerifyEmailSerializer(serializers.Serializer):
+    otp=serializers.CharField(required=True)
+    email=serializers.EmailField(required=True)
+    
+    def validate_otp(self,value):
+        if not value:
+            raise serializers.ValidationError('otp is required')
+        if len(value)>6 or len(value)<6:
+            raise serializers.ValidationError('check your otp length')
+        return value
+
+
+class ForgetPasswordSerializer(serializers.Serializer):
+    email=serializers.EmailField(write_only=True)
+    
+    
+class resendverifySerializer(serializers.Serializer):
+    email=serializers.EmailField(write_only=True)
+    
+    
         
+        
+class VerifyResetPasswordOtPSerializer(serializers.Serializer):
+    email=serializers.EmailField(required=True)
+    otp=serializers.CharField(required=True,max_length=6)  
+    
+class ResetPasswordSerializers(serializers.Serializer):
+    password= serializers.CharField(required=True)
+    token=serializers.CharField(required=True)
+    
+    
+    def validate_password(self,value):
+        validate_password(value)
+        return value
+    
+class GoogleAuthSerializers(serializers.Serializer):
+    token=serializers.CharField(required=True)

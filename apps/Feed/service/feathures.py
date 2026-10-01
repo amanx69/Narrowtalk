@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F
 from apps.post.models import *
@@ -22,7 +23,8 @@ def toggle_like(user,project):
                         )
             liked=True 
     project.refresh_from_db(fields=['like_count'])
-    return{"liked": liked, "like_count": project.like_count}
+    cache.delete(f'home_feed_cache_v2_{user.id}')
+    return{"liked": liked, "like_count": project.like_count,"project_id":project.id}
             
         
 
@@ -42,7 +44,8 @@ def toggle_save(user,project):
             )
             saved = True
     project.refresh_from_db(fields=['save_count'])
-    return {"saved": saved, "save_count": project.save_count}
+    cache.delete(f'home_feed_cache_v2_{user.id}')
+    return {"saved": saved, "save_count": project.save_count,"project_id":project.id}
     
     
 
@@ -52,8 +55,11 @@ def increment_view_count(project_id,user_id):
 
     if created:
         with transaction.atomic():
-            Project.objects.filter(id=project_id).update(
+            project=Project.objects.filter(id=project_id).update(
                 view_count=F('view_count') + 1
             )
+    
+            project.refresh_from_db(fields=['view_count'])
+    
         
-    return created
+    

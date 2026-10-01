@@ -28,7 +28,7 @@ class Profile(models.Model):
         DEVELOPER = "developer", "Developer"
         DESIGNER = "designer", "Designer"
         PRODUCT = "product", "Product"
-        MARKETING = "marketing", "Marketing"
+        MARKETING = "marketing" , "Marketing"
         
 
     id=models.UUIDField(primary_key=True,editable=False,default=uuid.uuid4,unique=True)
@@ -45,21 +45,27 @@ class Profile(models.Model):
     project_joined=models.PositiveIntegerField(default=0)
     project_completed=models.PositiveIntegerField(default=0)
     looking_for=models.CharField(max_length=150,null=True,blank=True)
+    project_count=models.PositiveIntegerField(default=0)
     profile_like=models.PositiveIntegerField(default=0)
     
     
-    
-    
+   
     def __str__(self):
         return self.username
-    
+    class Meta:
+        indexes=[
+            models.Index(fields=['created_at']),
+            models.Index(fields=['availability']),
+            models.Index(fields=['username'])
+        ]
+        
     
     
  
 class ProfileLIke(models.Model):
     
-    user=models.ForeignKey(User,on_delete=models.DO_NOTHING,related_name='user_profile_like')
-    profile=models.ForeignKey(Profile,on_delete=models.DO_NOTHING,related_name="profile_likes")
+    user=models.ForeignKey(User,on_delete=models.CASCADE,related_name='user_profile_like')
+    profile=models.ForeignKey(Profile,on_delete=models.CASCADE,related_name="profile_likes")
     created_at=models.DateTimeField(auto_now_add=True)
     
     

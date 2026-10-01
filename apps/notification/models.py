@@ -20,29 +20,17 @@ class Notification(models.Model):
         # Post Team Events
         NEW_MEMBER            = "new_member",            "New Member Joined"
         MEMBER_LEFT           = "member_left",           "Member Left"
+        REMOVE_MEMBER = "member_remove", "MEMBER_REMOVE"
 
-    recipient  = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="notifications"
-    )
-    sender     = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="sent_notifications"
-    )
+    recipient  = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name="notifications")
+    sender     = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True, blank=True,related_name="sent_notifications")
     notif_type = models.CharField(max_length=30, choices=Type.choices)
     title      = models.CharField(max_length=100)
     body       = models.TextField()
     is_read    = models.BooleanField(default=False)
-    project    = models.ForeignKey(
-        Project,
-        on_delete=models.CASCADE,
-        null=True, blank=True,
-        related_name="notifications"
-    )
+    project    = models.ForeignKey(Project,on_delete=models.CASCADE,null=True, blank=True,related_name="notifications")
     created_at = models.DateTimeField(auto_now_add=True)
+    
 
     class Meta:
         ordering = ["-created_at"]
