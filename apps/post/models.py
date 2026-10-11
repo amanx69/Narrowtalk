@@ -44,7 +44,7 @@ class Project(models.Model):
     id= models.UUIDField(primary_key=True,editable=False,unique=True,default=uuid.uuid4)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="projects_owner")
     title = models.CharField(max_length=150,null=False,blank=False)
-    project_name=models.CharField(max_length=50,null=False,blank=False,unique=True)
+    project_name=models.CharField(max_length=50,null=False,blank=False,unique=False)
     description = models.TextField(null=False,blank=False)
     stage = models.CharField(max_length=20, choices=Stage.choices, default=Stage.IDEA)
     industry = models.CharField(max_length=100, blank=True)
@@ -155,6 +155,36 @@ class Membership(models.Model):
         indexes=[
             models.Index(fields=['joined_at']),
             models.Index(fields=['is_active'])
+        ]
+        
+    
+    
+class RequestJoinProjet(models.Model):
+    class Status(models.TextChoices):
+            PENDING = "pending", "Pending"
+            ACCEPTED = "accepted", "Accepted"
+            REJECTED = "rejected", "Rejected" 
+    id= models.UUIDField(unique=True,primary_key=True,default=uuid.uuid4,editable=False)
+    request_owner=models.ForeignKey(User,on_delete=models.CASCADE,related_name="request_owner")
+    receiver_user=models.ForeignKey(User,on_delete=models.CASCADE,related_name="receiver_user")
+    project=models.ForeignKey(Project,on_delete=models.CASCADE,related_name="request_project")
+    role=models.ForeignKey(RoleNeeded,on_delete=models.CASCADE,related_name="project_role")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    message= models.TextField(max_length=500,null=True,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    
+    
+    def __str__(self):
+        return f"{self.request_owner.username} request to {self.receiver_user.username} for {self.role.role}"
+    
+    
+    
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request_owner", "receiver_user", "project", "role"],
+                name="unique_project_join_request"
+            )
         ]
         
     
