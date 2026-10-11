@@ -1,6 +1,6 @@
 from rest_framework import serializers
-from ..models import ChatGroup ,Message
-from apps.Profile.api.serializer import ChatProfileSerializer
+from ..models import ChatGroup ,Message ,GroupMember
+from apps.Profile.api.serializer import ChatProfileSerializer ,MemebrProfileSerializer
 from core.helpers import CompressedProfilePicField
 
 
@@ -29,3 +29,22 @@ class MessageSerilizer(serializers.ModelSerializer):
     class Meta:
         model= Message
         fields=('id','text','file','created_at',"sender_profile")
+        
+
+
+class GroupMemberListSerilizer(serializers.ModelSerializer):
+    user_profile = MemebrProfileSerializer(source='user.user_profile', read_only=True)
+    class Meta:
+        model = GroupMember
+        fields = ('user', 'is_active', 'role', 'joined_at', 'user_profile')
+
+
+class GroupMediaSerializer(serializers.ModelSerializer):
+    file = CompressedFileField(read_only=True)
+
+    class Meta:
+        model = Message
+        fields = ('id', 'file', 'created_at')
+
+    
+    
