@@ -3,8 +3,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from apps.Profile.models import Skill
 from ..models import Project, RoleNeeded ,Application,Membership
-from apps.Profile.api.serializer import SkillSerializer ,MemebrProfileSerializer ,ApplictionProfileSerializer ,ProjectProfileSerializer
-
+from apps.Profile.api.serializer import SkillSerializer ,MemebrProfileSerializer ,ApplictionProfileSerializer ,ProjectProfileSerializer,RequestProfileSerializer    
+from ..models import RequestJoinProjet
 
 #! this ser used for create only create the project
 
@@ -79,16 +79,16 @@ class ProjectListSerializer(serializers.ModelSerializer):
     project_file = CompressedProjectFileField(read_only=True)
     class Meta:
         model=Project #! think about show like in project detail
-        fields=('id','project_name',"title","description",'stage','created_at','owner','project_file')
+        fields=('id','project_name',"title","description",'stage','created_at','owner','project_file','status')
         read_only_fields=fields   
-#! this ser used for get Project detiles project
+#! this ser used for get Project detiles project and used everywere where nedd to show detiles
 
 class ProjectDetailSerializer(serializers.ModelSerializer):
     owner=ProjectProfileSerializer(source='owner.user_profile')
     project_file = CompressedProjectFileField(read_only=True)
     class Meta:
         model=Project #! think about show like in project detail
-        fields=('id','project_name',"title",'project_file',"description",'stage','created_at','owner','like_count','save_count','comment_count','view_count')
+        fields=('id','project_name',"title",'project_file',"description",'stage','created_at','owner','like_count','save_count','comment_count','view_count','status')
         read_only_fields=fields
     
         
@@ -272,3 +272,85 @@ class ProjectJoinSerializer(serializers.ModelSerializer):
         model=Membership
         fields = ('is_active','role_title','joined_at','project')
 
+
+
+
+
+
+
+''' this all serializers used for request and join feathures'''
+
+class SentRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model=RequestJoinProjet
+        fields=('id','created_at',"message","receiver_user",'project','role','status')
+        read_only_fields=['id','created_at']
+        
+        
+    def validate(self, attrs):
+        user = self.context["request"].user
+        project = attrs["project"]
+        receiver = attrs["receiver_user"]
+        role = attrs["role"]
+
+        if not user:
+            raise serializers.ValidationError('user not found')
+        if project.owner != user:
+            raise serializers.ValidationError("You are not the owner of this project.")
+        if role.project_id != project.id:
+            raise serializers.ValidationError("This role does not belong to this project.")
+        if receiver == user:
+            raise serializers.ValidationError("You cannot send a request to yourself.")
+            
+        if Membership.objects.filter(user=receiver, project=project, is_active=True).exists():
+            raise serializers.ValidationError("This user is already an active member of the project.")
+
+        return attrs
+
+
+class ProjectNameSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        fields = ('id', 'project_name')
+        read_only_fields = fields
+
+class GetRequestJoinProjectListSerializer(serializers.ModelSerializer):
+    
+    request_owner_profile= RequestProfileSerializer(source='request_owner.user_profile', read_only=True)
+    role= serializers.CharField(source='role.role',read_only=True)
+    project__name=serializers.CharField(source='project.project_name', read_only=True)
+    project_id=serializers.CharField(source='project.id', read_only=True)
+    class Meta:
+        model= RequestJoinProjet
+        fields=('id',"project_id","project__name",'role','request_owner_profile','message','status','created_at')
+        read_only_fields=fields
+        
+        
+
+class GetRequestJoinProjectDetailSerializer(serializers.ModelSerializer):
+    project= ProjectDetailSerializer(read_only=True)
+    role= GetJobRoleSerializer(read_only=True)
+    profile=RequestProfileSerializer(source='request_owner.user_profile')
+    class Meta:
+        model=RequestJoinProjet
+        fields=("id",'project','profile','role','message','status','created_at')
+
+# send req ser list and detiles
+class SentRequestJoinProjectListSerializer(serializers.ModelSerializer):
+    receiver_user_profile = RequestProfileSerializer(source='receiver_user.user_profile', read_only=True)
+    role= serializers.CharField(source='role.role',read_only=True)
+    project_name = serializers.CharField(source='project.project_name', read_only=True)
+    project_id = serializers.CharField(source='project.id', read_only=True)
+    
+    class Meta:
+        model = RequestJoinProjet
+        fields = ('id', 'project_id', 'project_name', 'role', 'receiver_user_profile', 'status', 'message', 'created_at')
+
+class SentRequestJoinProjectDetailSerializer(serializers.ModelSerializer):
+    project = ProjectDetailSerializer(read_only=True)
+    role = GetJobRoleSerializer(read_only=True)
+    profile = RequestProfileSerializer(source='receiver_user.user_profile', read_only=True)
+    
+    class Meta:
+        model = RequestJoinProjet
+        fields = ("id", 'project', 'profile', 'role', 'message', 'status', 'created_at')

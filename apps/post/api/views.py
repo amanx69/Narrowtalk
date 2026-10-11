@@ -100,7 +100,7 @@ class ProjectView(ModelViewSet):
     
     def get_queryset(self):  
         if self.action =="list":  
-            return Project.objects.filter(is_active=True,is_delete=False,owner=self.request.user)
+            return Project.objects.filter(is_active=True,is_delete=False,owner=self.request.user).exclude(status=Project.ProjectStatus.COMPLETED)
         return Project.objects.all()
 
     def perform_create(self, serializer):
@@ -120,14 +120,42 @@ class ProjectView(ModelViewSet):
         cache.delete(f"project_detail_v1_:{project.id}")
         return Response(ser.data)
 
-    def perform_destroy(self, instance, *args, **kwargs):
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+
+        # 1. Check karein agar project me active members hain 
+        has_active_members = Membership.objects.filter(
+            project=instance, 
+            is_active=True
+        ).exclude(user=request.user).exists()
+
+        if has_active_members or instance.member_count > 0:
+            return Response(
+                {
+                    "error": "Cannot delete project because it has active team members. "
+                    "Please transfer ownership to another member or remove all members before deleting."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 2. Soft delete project aur count decrement
         instance.is_active = False
-        instance.is_delete=True
-        if instance.owner.user_profile.project_count >0:
+        instance.is_delete = True
+        if hasattr(instance.owner, 'user_profile') and instance.owner.user_profile.project_count > 0:
             Decrement_Project_Create_Count(instance.owner.user_profile.id)
-        instance.save(update_fields=["is_active",'is_delete'])
+        instance.save(update_fields=["is_active", 'is_delete'])
+
+        # 3. Invalidate cache
         cache.delete(f"user_profile_v1_:{instance.owner.id}")
         cache.delete(f"other_profile_v2_:{instance.owner.id}")
+        cache.delete(f"project_detail_v1_:{instance.id}")
+
+        return Response(
+            {"message": f"Project '{instance.title}' deleted successfully."},
+            status=status.HTTP_200_OK
+        )
+
+
         
     def retrieve(self, request, *args, **kwargs):
         project_id = self.kwargs.get('pk')
@@ -214,7 +242,7 @@ class ProjectView(ModelViewSet):
             role.delete()
         return Response({"message": f"Role '{role.title}' deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
         
-        
+
 
 '''
 this all class for only project owner manage and see all appliction
@@ -513,8 +541,3 @@ class UserJoinProjectDetiles(APIView):
         ser=ProjectJoinSerializer(project,many=True)
         return Response(ser.data,status.HTTP_200_OK)
         
-    
-
-#! make project owner also send request to join
-#! user show and accpected
-#TODO create a api for filter a role 
