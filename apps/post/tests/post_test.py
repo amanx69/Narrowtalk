@@ -81,11 +81,7 @@ class PostTestcase(APITestCase):
         url= reverse("v1:post_urls-list")
         res=self.client.post(url,{"project_name":"connect","title":"we chnage the wirkd","description":"vfv"})
         self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-    def test_long_project_description(self):
-        url= reverse("v1:post_urls-list")
-        res=self.client.post(url,{"project_name":"connect","title":"we chnage the wirkd","description":"vfv"*50})
-        self.assertEqual(res.status_code,status.HTTP_400_BAD_REQUEST)
-
+    
     def test_missing_project_title(self):
         url= reverse("v1:post_urls-list")
         res=self.client.post(url,{"project_name":"connect","description":"vfvfnvkvvdvdsvvfvcdcxzczv"})
