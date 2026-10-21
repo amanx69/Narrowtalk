@@ -59,7 +59,7 @@ class CommentProjectView(APIView):
         
     def get(self,request,project_id):
         project=get_object_or_404(Project,id=project_id)
-        comments= Projectcomment.objects.filter(project=project.id).select_related('user').order_by('created_at')
+        comments = Projectcomment.objects.filter(project=project.id).select_related('user', 'user__user_profile').order_by('created_at')
         ser=GetCommentSerializer(comments,many=True)
         return Response({"data":ser.data},status.HTTP_200_OK)
     
@@ -69,8 +69,13 @@ class DeleteComment(APIView):
     throttle_classes=[commentDeletethrottle]
     def delete(self,request,project_id,comment_id):
         comment=get_object_or_404(Projectcomment,id=comment_id,project=project_id,user=request.user)
-        comment.delete()
-        return Response({"message": "Comment deleted successfully"},status.HTTP_204_NO_CONTENT)
+        with transaction.atomic():
+            comment.delete()
+            if comment.project.comment_count>0:
+                Project.objects.filter(id=comment.project.id).update(
+                    comment_count=F('comment_count')-1 
+                        )
+        return Response({"message": "Comment deleted successfully"}, status=status.HTTP_200_OK)
         
     
     
@@ -89,7 +94,11 @@ class SaveProjectView(APIView):
 class ProjectSaveListApiView(generics.ListAPIView):
     permission_classes=[IsAuthenticated]
     def get_queryset(self):
-        return Projectsave.objects.filter(user=self.request.user)
+        return (
+            Projectsave.objects.filter(user=self.request.user, project__is_delete=False)
+            .select_related('project', 'project__owner', 'project__owner__user_profile')
+            .order_by('-created_at')
+        )
     serializer_class=ProjectSaveSerializer
     
     def list(self, request, *args, **kwargs):
@@ -106,12 +115,12 @@ class ProjectSaveListApiView(generics.ListAPIView):
     
     
 class ProjectViewTrackView(APIView):
-    
     permission_classes = [IsAuthenticated]
-    def post(self, request,project_id):
+
+    def post(self, request, project_id):
         get_object_or_404(Project, id=project_id)
-        increment_count.delay(project_id, request.user.id) 
-        return Response(status=status.HTTP_202_ACCEPTED)
+        result = increment_view_count(project_id, request.user.id)
+        return Response(result, status=status.HTTP_200_OK)
        
 
 
@@ -124,11 +133,12 @@ class FeedView(APIView):
         blocked_by_me = UserBlock.objects.filter(blocker=request.user).values_list('blocked_user_id', flat=True)
         blocked_me = UserBlock.objects.filter(blocked_user=request.user).values_list('blocker_id', flat=True)
         blocked_users_ids = set(blocked_by_me).union(set(blocked_me))
-        data= Project.objects.filter(is_active=True).select_related('owner','owner__user_profile') \
+        data= Project.objects.filter(is_active=True, is_delete=False).select_related('owner','owner__user_profile') \
         .exclude(owner=request.user).exclude(owner_id__in=blocked_users_ids) \
+        .exclude(status=Project.ProjectStatus.COMPLETED) \
         .order_by('-created_at') \
         .annotate(
-            is_liked_by_user=Exists(Project.objects.filter(project=OuterRef('pk'), user=request.user)),
+            is_liked_by_user=Exists(ProjectLike.objects.filter(project=OuterRef('pk'), user=request.user)),
             is_saved_by_user=Exists(Projectsave.objects.filter(project=OuterRef('pk'), user=request.user))
         ) 
         paginator = FeedPegination()
@@ -151,10 +161,11 @@ class HomeFeedView(APIView):
         blocked_by_me = UserBlock.objects.filter(blocker=request.user).values_list('blocked_user_id', flat=True)
         blocked_me = UserBlock.objects.filter(blocked_user=request.user).values_list('blocker_id', flat=True)
         blocked_users_ids = set(blocked_by_me).union(set(blocked_me))
-        data = Project.objects.filter(is_active=True) \
+        data = Project.objects.filter(is_active=True, is_delete=False) \
             .select_related('owner', 'owner__user_profile') \
             .exclude(owner=request.user) \
             .exclude(owner_id__in=blocked_users_ids) \
+            .exclude(status=Project.ProjectStatus.COMPLETED) \
             .annotate(
                 is_liked_by_user=Exists(ProjectLike.objects.filter(project=OuterRef('pk'), user=request.user)),
                 is_saved_by_user=Exists(Projectsave.objects.filter(project=OuterRef('pk'), user=request.user))
@@ -173,20 +184,24 @@ class HomeFeedView(APIView):
 #! tranding project
 
 class TrandingProjectView(APIView):
-    def get(self,request):
-        
-        cache_data=cache.get('best_ideas_strip_v1')
-        if  cache_data  :
-            return Response(cache_data,status.HTTP_200_OK)
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        blocked_by_me = UserBlock.objects.filter(blocker=request.user).values_list('blocked_user_id', flat=True)
+        blocked_me = UserBlock.objects.filter(blocked_user=request.user).values_list('blocker_id', flat=True)
+        blocked_users_ids = set(blocked_by_me).union(set(blocked_me))
+
         queryset = (
-                Project.objects.filter(is_active=True)
-                .select_related('owner','owner__user_profile')
-                .order_by('-like_count','-view_count')[:10]
+            Project.objects.filter(is_active=True, is_delete=False)
+            .exclude(owner_id__in=blocked_users_ids)
+            .select_related('owner', 'owner__user_profile')
+            .annotate(
+                is_liked_by_user=Exists(ProjectLike.objects.filter(project=OuterRef('pk'), user=request.user)),
+                is_saved_by_user=Exists(Projectsave.objects.filter(project=OuterRef('pk'), user=request.user))
             )
-        data=FeedSerializer(queryset,many=True)
-        cache.set('best_ideas_strip_v1',data.data,timeout=600)
-        return Response(data.data)
-        
-            
+            .order_by('-like_count', '-view_count', '-save_count', '-created_at')[:10]
+        )
+        ser = HomeFeedSerializer(queryset, many=True, context={'request': request})
+        return Response(ser.data, status=status.HTTP_200_OK)
         
         
