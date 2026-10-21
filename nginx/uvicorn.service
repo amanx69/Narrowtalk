@@ -5,9 +5,9 @@ After=network.target
 [Service]
 User=ubuntu
 Group=www-data
-WorkingDirectory=/home/ubuntu/authsystem/backend
-EnvironmentFile=/home/ubuntu/authsystem/backend/.env
-ExecStart=/home/ubuntu/authsystem/.venv/bin/uvicorn \
+WorkingDirectory=/home/ubuntu/Narrowtalk
+EnvironmentFile=/home/ubuntu/Narrowtalk/.env
+ExecStart=/home/ubuntu/Narrowtalk/venv/bin/uvicorn \
     config.asgi:application \
     --host 127.0.0.1 \
     --port 8001 \

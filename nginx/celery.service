@@ -1,0 +1,16 @@
+[Unit]
+Description=Celery Worker & Beat for Narrow Django Backend
+After=network.target redis-server.service
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/Narrowtalk
+EnvironmentFile=/home/ubuntu/Narrowtalk/.env
+ExecStart=/home/ubuntu/Narrowtalk/venv/bin/celery -A config worker -B -l info --concurrency=2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
