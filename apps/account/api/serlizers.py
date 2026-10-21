@@ -18,7 +18,6 @@ class SignUpSerializer(serializers.ModelSerializer):
             password=validated_data['password'],
         )
         send_verification_email.delay(id=str(user.id))
-        print(user.id)
             
         return user
     def validate_password(self,value):
