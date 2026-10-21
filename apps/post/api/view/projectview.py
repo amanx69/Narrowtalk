@@ -1,17 +1,19 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, generics, filters
 from rest_framework.permissions import IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Count, Q
 from django.core.cache import cache
 from apps.Profile.models import Profile
 from apps.Chats.models import ChatGroup, GroupMember
 from ...models import Membership, Project, RoleNeeded
-from core.permissions import IsProjectOwnerForProject
+from core.permissions import IsProjectOwnerForProject, IsRoleOwner
 from ..service import Decrement_Project_Create_Count, Increment_Project_Create_Count
-from core.throttling import TransferOwnershipThrottle,CompleteProjectThrottle
+from core.throttling import TransferOwnershipThrottle, CompleteProjectThrottle, RoleUpdatethrottle
+from ..serializers import CurrentUserProjectListSerializer, ProjectListSerializer
 
 class UpdateProjectIscompleated(APIView):
     permission_classes = [IsAuthenticated, IsProjectOwnerForProject]
@@ -143,7 +145,7 @@ class TransferProjectOwnershipView(APIView):
             if hasattr(new_owner, 'user_profile'):
                 Increment_Project_Create_Count(new_owner.user_profile.id)
 
-            # delted caches
+            # delete caches
             cache.delete(f"user_profile_v1_:{old_owner.id}")
             cache.delete(f"user_profile_v1_:{new_owner.id}")
             cache.delete(f"other_profile_v2_:{old_owner.id}")
@@ -163,3 +165,89 @@ class TransferProjectOwnershipView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+
+class CurrentUserProjectsView(generics.ListAPIView):
+    """
+    this view used for show all project is appliction manage screen 
+    """
+    serializer_class = CurrentUserProjectListSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend]
+    search_fields = ['^project_name', 'title']
+    filterset_fields = ['stage', 'status']
+
+    def get_queryset(self):
+        return (
+            Project.objects.filter(
+                owner=self.request.user,
+                is_delete=False,
+            )
+            .select_related('owner__user_profile')
+            .annotate(
+                application_count=Count('roles__applications', distinct=True)
+            )
+            .order_by('-created_at')
+        )
+
+
+class CurrentUserCompletedProjectsView(generics.ListAPIView):
+    """
+    Returns completed projects for the current user (where user is owner or active member).
+    """
+    serializer_class = ProjectListSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter, DjangoFilterBackend]
+    search_fields = ['^project_name', 'title']
+    filterset_fields = ['stage']
+
+    def get_queryset(self):
+        return (
+            Project.objects.filter(
+                Q(owner=self.request.user) | Q(memberss__user=self.request.user, memberss__is_active=True),
+                status=Project.ProjectStatus.COMPLETED,
+                is_delete=False,
+            )
+            .select_related('owner__user_profile')
+            .distinct()
+            .order_by('-updated_at')
+        )
+
+
+class CloseProjectRoleView(APIView):
+    """
+    Allows the project owner to close an open role (sets is_open = False).
+    """
+    permission_classes = [IsAuthenticated, IsRoleOwner]
+    throttle_classes = [RoleUpdatethrottle]
+
+    def post(self, request, role_id=None, pk=None):
+        target_id = role_id or pk
+        role = get_object_or_404(
+            RoleNeeded.objects.select_related('project'),
+            id=target_id,
+            project__is_delete=False,
+        )
+        self.check_object_permissions(request, role)
+
+        if not role.is_open:
+            return Response(
+                {"error": "This role is already closed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        role.is_open = False
+        role.save(update_fields=['is_open'])
+        cache.delete(f"project_detail_v1_:{role.project_id}")
+
+        return Response(
+            {
+                "message": f"Role '{role.title}' has been closed successfully.",
+                "role_id": str(role.id),
+                "is_open": role.is_open,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+
