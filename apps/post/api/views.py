@@ -5,9 +5,11 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action 
 from django.shortcuts import get_object_or_404
-from django_ratelimit.decorators import ratelimit
+import logging
 import datetime
 from apps.Profile.models import Profile
+
+logger = logging.getLogger(__name__)
 from django.utils import timezone 
 from rest_framework import generics
 from django.db import transaction
@@ -17,7 +19,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework import filters
 from core.throttling import *
 from django.core.cache import cache
-from ..models import Project, Membership, RoleNeeded, Application
+from ..models import Project, Membership, RoleNeeded, Application, RequestJoinProjet
 from .serializers import (
     ProjectSerializer, 
     GetJobRoleSerializer, 
@@ -66,7 +68,7 @@ class ProjectView(ModelViewSet):
     permission_classes = [IsOwnerOrReadOnly, IsAuthenticated]
     serializer_class = ProjectSerializer
     filter_backends=[filters.SearchFilter,DjangoFilterBackend]
-    search_fields=['^project_name','roles__role','roles__title']
+    search_fields=['project_name', 'title', 'description', 'roles__role', 'roles__title']
     filterset_fields = ['stage']
     
 
@@ -99,8 +101,15 @@ class ProjectView(ModelViewSet):
         return self.serializer_class
     
     def get_queryset(self):  
-        if self.action =="list":  
-            return Project.objects.filter(is_active=True,is_delete=False,owner=self.request.user).exclude(status=Project.ProjectStatus.COMPLETED)
+        if self.action == "list":
+            qs = Project.objects.filter(is_active=True, is_delete=False).select_related('owner', 'owner__user_profile')
+            if self.request.user.is_authenticated:
+                from apps.safety.models import UserBlock
+                blocked_by_me = UserBlock.objects.filter(blocker=self.request.user).values_list('blocked_user_id', flat=True)
+                blocked_me = UserBlock.objects.filter(blocked_user=self.request.user).values_list('blocker_id', flat=True)
+                blocked_users_ids = set(blocked_by_me).union(set(blocked_me))
+                qs = qs.exclude(owner_id__in=blocked_users_ids)
+            return qs.distinct().order_by('-created_at')
         return Project.objects.all()
 
     def perform_create(self, serializer):
@@ -138,21 +147,21 @@ class ProjectView(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 2. Soft delete project aur count decrement
+        # Soft delete project 
         instance.is_active = False
         instance.is_delete = True
         if hasattr(instance.owner, 'user_profile') and instance.owner.user_profile.project_count > 0:
             Decrement_Project_Create_Count(instance.owner.user_profile.id)
         instance.save(update_fields=["is_active", 'is_delete'])
 
-        # 3. Invalidate cache
+        # Invalidate cache
         cache.delete(f"user_profile_v1_:{instance.owner.id}")
         cache.delete(f"other_profile_v2_:{instance.owner.id}")
         cache.delete(f"project_detail_v1_:{instance.id}")
 
         return Response(
             {"message": f"Project '{instance.title}' deleted successfully."},
-            status=status.HTTP_200_OK
+            status=status.HTTP_204_NO_CONTENT
         )
 
 
@@ -186,7 +195,6 @@ class ProjectView(ModelViewSet):
                 role = serializer.save(project=project)
                 role.project.role_count = F("role_count") + 1
                 role.project.save(update_fields=['role_count'])
-                #TODO make count if new role create than inc in project role count
             return Response(GetJobRoleSerializer(role).data, status=status.HTTP_201_CREATED)
 #! close the project
     @action(detail=True, methods=["post"], url_path="close")
@@ -207,7 +215,7 @@ class ProjectView(ModelViewSet):
         if cache_member is not None:
             return Response({"data": cache_member}, status.HTTP_200_OK)
 
-        data=Membership.objects.filter(project=project,is_active=True).select_related('user').order_by('joined_at')
+        data = Membership.objects.filter(project=project, is_active=True).select_related('user', 'user__user_profile').order_by('joined_at')
         ser= MemebrSerializer(data,many=True)
         cache.set(f'project_memeber_v1:{project.id}',ser.data,timeout=400)
         return Response({
@@ -240,8 +248,7 @@ class ProjectView(ModelViewSet):
                 role.project.role_count = F("role_count") - 1
                 role.project.save(update_fields=['role_count'])
             role.delete()
-        return Response({"message": f"Role '{role.title}' deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
-        
+        return Response({"message": f"Role '{role.title}' deleted successfully."}, status=status.HTTP_200_OK)
 
 
 '''
@@ -260,7 +267,14 @@ class AccpectAppliction(APIView):
         appliction = get_object_or_404(Application, id=appliction_id,)
         self.check_object_permissions(request, appliction)
         if appliction.status == Application.Status.ACCEPTED:
-            return Response({"message": "This application has already been accepted."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "This application has already been accepted."}, status=status.HTTP_400_BAD_REQUEST)
+        if appliction.status != Application.Status.PENDING:
+            return Response({"error": "Only pending applications can be processed."}, status=status.HTTP_400_BAD_REQUEST)
+        if Membership.objects.filter(user=appliction.user, project=appliction.role.project, is_active=True).exists():
+            return Response({"error": "This user is already an active member of this project."}, status=status.HTTP_400_BAD_REQUEST)
+        # check if slot is 0 reject
+        if appliction.role.slots_available <= 0 or not appliction.role.is_open:
+           return Response({"error": "No open slots available for this role."}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             appliction.status = Application.Status.ACCEPTED
             
@@ -283,8 +297,14 @@ class AccpectAppliction(APIView):
             appliction.role.project.save(update_fields=['member_count'])
             appliction.save(update_fields=["status"])
             _safe_notify(notify_application_accepted, appliction)
-            Update_profile_project_join.delay(appliction.user.user_profile.id)
-            AccpectedAppliction_email.delay(appliction.id)
+            try:
+                Update_profile_project_join.delay(appliction.user.user_profile.id)
+            except Exception as e:
+                logger.error(f"Failed to trigger Update_profile_project_join: {e}")
+            try:
+                AccpectedAppliction_email.delay(appliction.id)
+            except Exception as e:
+                logger.error(f"Failed to trigger AccpectedAppliction_email: {e}")
             cache.delete(f'project_memeber_v1:{appliction.role.project.id}')# delete member
             cache.delete(f'single_appliction{appliction_id}')
             
@@ -299,7 +319,9 @@ class RejectAppliction(APIView):
         appliction = get_object_or_404(Application, id=appliction_id)
         self.check_object_permissions(request,appliction)
         if appliction.status == Application.Status.REJECTED:
-            return Response({"message": "This application has already been rejected."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "This application has already been rejected."}, status=status.HTTP_400_BAD_REQUEST)
+        if appliction.status != Application.Status.PENDING:
+            return Response({"error": "Only pending applications can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
 
         appliction.status = Application.Status.REJECTED
         appliction.save(update_fields=["status"])            
@@ -314,11 +336,11 @@ class RoleApplictionPendingListView(APIView):
     
     
     def get(self,request,role_id):
-        role=get_object_or_404(RoleNeeded,id=role_id)
+        role = get_object_or_404(RoleNeeded.objects.select_related('project'), id=role_id)
         if role.project.owner!= request.user:
             raise PermissionDenied('only owner see pending list')
         #! filter with username or  email
-        appliction=Application.custom_objects.get_pending_appliction().filter(role=role).select_related('user').order_by('created_at')
+        appliction = Application.custom_objects.get_pending_appliction().filter(role=role).select_related('user', 'user__user_profile').order_by('created_at')
         search_query= request.query_params.get('search',None)
         if search_query:
               appliction = appliction.filter(
@@ -333,11 +355,11 @@ class RoleApplictionAccpectedListView(APIView):
     permission_classes = [IsAuthenticated,IsProjectOwner]
     
     def get(self,request,role_id):
-        role=get_object_or_404(RoleNeeded,id=role_id)
+        role = get_object_or_404(RoleNeeded.objects.select_related('project'), id=role_id)
         if role.project.owner!= request.user:
             raise PermissionDenied('only owner see accpected list')
         
-        appliction=Application.custom_objects.get_accpected_appliction().filter(role=role).select_related('user').order_by('created_at')
+        appliction = Application.custom_objects.get_accpected_appliction().filter(role=role).select_related('user', 'user__user_profile').order_by('created_at')
         ser=GetapplictionSerializar(appliction,many=True)
         return Response(ser.data)
         
@@ -345,10 +367,10 @@ class RoleApplictionRejectedListView(APIView):
     permission_classes=[IsProjectOwner,IsAuthenticated]
     
     def get(self,request,role_id):
-        role=get_object_or_404(RoleNeeded,id=role_id)
+        role = get_object_or_404(RoleNeeded.objects.select_related('project'), id=role_id)
         if role.project.owner!= request.user:
             raise PermissionDenied('only owner see rejected list')
-        appliction=Application.custom_objects.get_rejected_appliction().filter(role=role).select_related('user').order_by('created_at')
+        appliction = Application.custom_objects.get_rejected_appliction().filter(role=role).select_related('user', 'user__user_profile').order_by('created_at')
         ser=GetapplictionSerializar(appliction,many=True)
         return Response(ser.data)
         
@@ -379,7 +401,8 @@ class RemoveMemberView(generics.DestroyAPIView):
         obj = get_object_or_404(
             Membership,
             user_id=self.kwargs['user_id'],
-            project_id=self.kwargs['project_id']
+            project_id=self.kwargs['project_id'],
+            is_active=True
         )
         self.check_object_permissions(self.request, obj)
         return obj
@@ -402,6 +425,17 @@ class RemoveMemberView(generics.DestroyAPIView):
             if accepted_app:
                 accepted_app.role.slots_available = F('slots_available') + 1
                 accepted_app.role.save(update_fields=['slots_available'])
+                accepted_app.status = Application.Status.REMOVE
+                accepted_app.save(update_fields=['status'])
+            else:
+                accepted_req = RequestJoinProjet.objects.filter(
+                    receiver_user=user,
+                    project=project,
+                    status=RequestJoinProjet.Status.ACCEPTED
+                ).order_by('-created_at').first()
+                if accepted_req:
+                    accepted_req.role.slots_available = F('slots_available') + 1
+                    accepted_req.role.save(update_fields=['slots_available'])
                 
             if user.user_profile.project_joined > 0:
                 user.user_profile.project_joined = F("project_joined") - 1
@@ -443,13 +477,30 @@ class LeaveProjectView(APIView):
                 status=Application.Status.ACCEPTED
             ).order_by('-created_at').first()
             
+            accepted_req = None
             if accepted_app:
                 accepted_app.role.slots_available = F('slots_available') + 1
                 accepted_app.role.save(update_fields=['slots_available'])
+                accepted_app.status = Application.Status.LEAVE
+                accepted_app.save(update_fields=['status'])
+            else:
+                accepted_req = RequestJoinProjet.objects.filter(
+                    receiver_user=request.user,
+                    project=project,
+                    status=RequestJoinProjet.Status.ACCEPTED
+                ).order_by('-created_at').first()
+                if accepted_req:
+                    accepted_req.role.slots_available = F('slots_available') + 1
+                    accepted_req.role.save(update_fields=['slots_available'])
+
             decrement_profile_project_join.delay(membership.user.user_profile.id)
             membership.is_active = False
             membership.save(update_fields=["is_active"])  #TODO in future add send leave request the owner
-            role_title= accepted_app.role.title if accepted_app else None
+            role_title = (
+                accepted_app.role.title
+                if accepted_app
+                else (accepted_req.role.title if accepted_req else membership.role_title)
+            )
             MemberLeftProjectMail.delay(project.owner.id,request.user.id,project.project_name,role_title)
             _safe_notify(notify_member_left,project.owner.id,membership.user,project)
             remove_in_project_groupe(project,membership.user) #! remove the user  in project chat_groupe
@@ -472,35 +523,39 @@ class WithdrawAppliction(APIView): # TODO think about this api if need than not 
         return Response({"message": "Application withdrawn successfully."},status.HTTP_200_OK)
 
 #! cretae appliction endpint
-class ApplictionView(APIView):
+class ApplictionView(APIView): 
     permission_classes = [IsAuthenticated]
     throttle_classes=[ApplictionCreatethrottle]
     def post(self, request, roleNeed_id):
         role = get_object_or_404(RoleNeeded, id=roleNeed_id)
-        print(role)
         if role.project.owner == request.user:
             raise PermissionDenied("You cannot apply to roles within your own project.")
         if not role.is_open or role.slots_available <= 0:
-            return Response({"detail": "This role is closed for applications."}, status=status.HTTP_400_BAD_REQUEST)
-#TODO infuture in any user apply than leave then reapply show application status reapply
+            return Response({"error": "This role is closed for applications."}, status=status.HTTP_400_BAD_REQUEST)
+
         existing_app = Application.objects.filter(user=request.user, role=role).order_by('-created_at').first()
         if Membership.objects.filter(user=request.user, project=role.project, is_active=True).exists():
-          return Response({"detail": "You are already an active member of this project."}, status=status.HTTP_400_BAD_REQUEST)
+          return Response({"error": "You are already an active member of this project."}, status=status.HTTP_400_BAD_REQUEST)
         
         if existing_app:
             if existing_app.status == Application.Status.PENDING:
-                return Response({"detail":"Your previous application is still pending review."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": "Your previous application is still pending review."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if existing_app.status == Application.Status.ACCEPTED:
+                return Response({"error": "You have already been accepted for this role."}, status=status.HTTP_400_BAD_REQUEST)
+            elif existing_app.status in [Application.Status.LEAVE, Application.Status.REMOVE]:
+                return Response({"error": "You cannot apply because you previously left or were removed from this role in the project."}, status=status.HTTP_400_BAD_REQUEST)
             elif existing_app.status == Application.Status.REJECTED:
                 #! 7-day cooldown period since their last application
                 days_since_applied = (timezone.now() - existing_app.created_at).days
                 if days_since_applied < 3:
                     days_left = 3 - days_since_applied
                     return Response(
-                        {"detail": f"You were recently rejected. Please wait {days_left} more day(s) before re-applying to improve yourself"},
+                        {"error": f"You were recently rejected. Please wait {days_left} days before re-applying."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-
-        ser = ApplictionSerializer(data=request.data, context={'request': request})
+       
+        ser = ApplictionSerializer(data=request.data, context={'request': request,'roles':role.role})
         ser.is_valid(raise_exception=True)
         with transaction.atomic():
             #! if reapply appliction not increment the applaction 
@@ -537,7 +592,7 @@ class UserJoinProjectDetiles(APIView):
     permission_classes=[IsAuthenticated]
     def get(self, request):
     
-        project=Membership.objects.filter(user=request.user).select_related('project')
+        project=Membership.objects.filter(user=request.user,is_active=True).select_related('project')
         ser=ProjectJoinSerializer(project,many=True)
         return Response(ser.data,status.HTTP_200_OK)
         

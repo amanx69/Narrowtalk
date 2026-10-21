@@ -28,7 +28,13 @@ from .view.join_request import (
     CurrentUserSentRequestsListAPIView,
     CurrentUserSentRequestDetailAPIView
 )
-from .view.projectview import UpdateProjectIscompleated, TransferProjectOwnershipView
+from .view.projectview import (
+    UpdateProjectIscompleated,
+    TransferProjectOwnershipView,
+    CurrentUserProjectsView,
+    CurrentUserCompletedProjectsView,
+    CloseProjectRoleView,
+)
 
 router = DefaultRouter()
 router.register("post", ProjectView, basename="post_urls")
@@ -36,6 +42,8 @@ router.register("post", ProjectView, basename="post_urls")
 urlpatterns = router.urls
 
 urlpatterns += [
+    path("my-projects/", CurrentUserProjectsView.as_view(), name="current_user_projects"),
+    path("completed-projects/", CurrentUserCompletedProjectsView.as_view(), name="current_user_completed_projects"),
     path("apply_appliction/<uuid:roleNeed_id>/", ApplictionView.as_view(), name="appliction"),
     path("withdraw_appliction/<uuid:appliction_id>/", WithdrawAppliction.as_view(), name="withdraw_app"),
     path("accpect_appliction/<uuid:appliction_id>/", AccpectAppliction.as_view(), name="accpect_app"),
@@ -68,4 +76,5 @@ urlpatterns += [
     # mark project completed
     path("project/complete/<uuid:project_id>/", UpdateProjectIscompleated.as_view(), name="complete_project"),
     path("project/transfer-ownership/<uuid:project_id>/", TransferProjectOwnershipView.as_view(), name="transfer_project_ownership"),
+    path("role/close/<uuid:role_id>/", CloseProjectRoleView.as_view(), name="close_role"),
 ]

@@ -29,6 +29,7 @@ class Project(models.Model):
         PROJECT = "project", "Project"
         COLLEGE_PROJECT = "college_project", "College Project"
         LEARNING_PROJECT = "learning_project", "Learning Project"
+        MAINTENANCE = "maintenance", "Maintenance"
       
         
     class ProjectStatus(models.TextChoices):  #TODO commit add project tracker
@@ -61,11 +62,18 @@ class Project(models.Model):
     role_count = models.PositiveIntegerField(default=0) 
     member_count=models.PositiveBigIntegerField(default=0)
     file = models.FileField(null=True,blank=True,upload_to="ProjectFile/",name="project_file", storage=AutoMediaCloudinaryStorage())
+    github_link = models.URLField(max_length=300, blank=True, null=True)
 
     custom_manager=PostCustomManager()
     objects = models.Manager() 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=['is_active', 'is_delete', '-created_at']),
+            models.Index(fields=['owner', 'is_delete']),
+            models.Index(fields=['status', 'is_delete']),
+            models.Index(fields=['created_at']),
+        ]
 
     def __str__(self):
         return self.project_name
@@ -84,6 +92,12 @@ class RoleNeeded(models.Model):
     is_complete= models.BooleanField(default=False)
     application_count = models.PositiveIntegerField(default=0)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['project', 'is_open']),
+            models.Index(fields=['created_at']),
+        ]
+
     def __str__(self):
         return f"{self.title} @ {self.project.project_name}"
 
@@ -94,23 +108,20 @@ class RoleNeeded(models.Model):
 class Application(models.Model):
 
     
-    class purpose(models.TextChoices):
-            BACKEND = "backend", "BACKEND"
-            FRONTEND= "frontend", "FRONTEND"
-            FULLSTACK="fullstack","FULLSTACK"
-            AIML= "ai/ml", "AI/ML" 
-            OTHER="other","OTHER"
+
     
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         ACCEPTED = "accepted", "Accepted"
-        REJECTED = "rejected", "Rejected"  
+        REJECTED = "rejected", "Rejected"
+        LEAVE = "leave", "Leave"
+        REMOVE = "remove", "Remove"  
     id= models.UUIDField(primary_key=True,editable=False,unique=True,default=uuid.uuid4)
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="applications"
     )
     role = models.ForeignKey(RoleNeeded, on_delete=models.CASCADE, related_name="applications")
-    apply_role_purpose=models.CharField(choices=purpose.choices,max_length=30,blank=False,null=False)
+    apply_role_purpose=models.CharField(max_length=30,blank=False,null=False)
     message = models.TextField(blank=False)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     created_at = models.DateTimeField(auto_now_add=True)

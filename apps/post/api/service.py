@@ -21,9 +21,9 @@ def Update_profile_project_join(profile_id):
     
 @shared_task
 def decrement_profile_project_join(profile_id):
-    Profile.objects.filter(id=profile_id).update( 
-            project_joined=F('project_joined')-1
-                )
+    Profile.objects.filter(id=profile_id, project_joined__gt=0).update( 
+        project_joined=F('project_joined') - 1
+    )
      
      
 #! increment and decrement project create count
@@ -31,13 +31,11 @@ def decrement_profile_project_join(profile_id):
 
 def Increment_Project_Create_Count(profile_id):
     Profile.objects.filter(id=profile_id).update(
-        project_count=F('project_count')+1
-        
+        project_count=F('project_count') + 1
     )
     
     
 def Decrement_Project_Create_Count(profile_id):
-    Profile.objects.filter(id=profile_id).update(
-        project_count=F('project_count')-1
-        
+    Profile.objects.filter(id=profile_id, project_count__gt=0).update(
+        project_count=F('project_count') - 1
     )

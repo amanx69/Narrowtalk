@@ -8,23 +8,23 @@ from ..models import RequestJoinProjet
 
 #! this ser used for create only create the project
 
-class CompressedProjectFileField(serializers.FileField):
-    def to_representation(self, value):
-        url = super().to_representation(value)
-        if url and '/upload/' in url:
-            if url.endswith('.pdf'):
-                return url
-            if url.endswith(('.mp4', '.mov', '.avi', '.webm')):
-                return url.replace('/upload/', '/upload/q_auto,f_auto,w_720/')
-                
-            
-            return url.replace('/upload/', '/upload/q_auto,f_auto,w_1080/')
-        return url
+from core.helpers import CompressedMediaFileField
+
+CompressedProjectFileField = CompressedMediaFileField
           
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = ("id","title",'project_name', "description", "stage", "created_at",'like_count','comment_count','save_count','project_file')
+        fields = ("id","title",'project_name', "description", "stage", "created_at",'like_count','comment_count','save_count','project_file','status','github_link')
+        read_only_fields = ('id', 'created_at', 'like_count', 'comment_count', 'save_count', 'status')
+
+    def validate_github_link(self, value):
+        if not value:
+            return value
+        val = value.strip()
+        if not (val.startswith('https://github.com/') or val.startswith('http://github.com/')):
+            raise serializers.ValidationError("Please provide a valid GitHub URL (e.g. https://github.com/username/repo).")
+        return val
 
     def validate_title(self, value):
         if not value or not value.strip():
@@ -69,37 +69,78 @@ class ProjectSerializer(serializers.ModelSerializer):
         if value.content_type not in allowed_types:
             raise serializers.ValidationError("Only JPG/PNG images, MP4/WEBM videos, and PDFs are allowed.")
         
-        max_size = 50 * 1024 * 1024  
-        if value.size > max_size:
-            raise serializers.ValidationError("File size must be under 50MB.")
+        # Cloudinary enforces a 10MB limit for raw files and images
+        if value.content_type.startswith('video/'):
+            max_size = 50 * 1024 * 1024  
+            if value.size > max_size:
+                raise serializers.ValidationError("Video size must be under 50MB.")
+        else:
+            max_size = 10 * 1024 * 1024  # 10MB
+            if value.size > max_size:
+                raise serializers.ValidationError("Image or PDF size must be under 10MB.")
         return value
- #! this ser return project list of current user with given fields
+ # this ser used for only in profile project listing 
 class ProjectListSerializer(serializers.ModelSerializer):
     owner=ProjectProfileSerializer(source='owner.user_profile')
     project_file = CompressedProjectFileField(read_only=True)
     class Meta:
         model=Project #! think about show like in project detail
-        fields=('id','project_name',"title","description",'stage','created_at','owner','project_file','status')
+        fields=('id','project_name',"title","description",'stage','created_at','owner','project_file','status','like_count','save_count','comment_count','view_count','github_link')
         read_only_fields=fields   
+
+#! this ser is used for current user projects with application counts & details for manage appliction screen 
+# and help to see project role appliction
+class CurrentUserProjectListSerializer(serializers.ModelSerializer):
+    owner = ProjectProfileSerializer(source='owner.user_profile', read_only=True)
+    application_count = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta:
+        model = Project
+        fields = (
+            'id',
+            'project_name',
+            'title',
+            'description',
+            'stage',
+            'status',
+            'created_at',
+            'owner',
+            'application_count',
+            'like_count',      
+            'save_count',      
+            'comment_count',  
+            'view_count', 
+            'github_link',
+        )
+        read_only_fields = fields
 #! this ser used for get Project detiles project and used everywere where nedd to show detiles
 
 class ProjectDetailSerializer(serializers.ModelSerializer):
-    owner=ProjectProfileSerializer(source='owner.user_profile')
+    owner = ProjectProfileSerializer(source='owner.user_profile')
+    chat_group_id = serializers.SerializerMethodField()
     project_file = CompressedProjectFileField(read_only=True)
+
     class Meta:
-        model=Project #! think about show like in project detail
-        fields=('id','project_name',"title",'project_file',"description",'stage','created_at','owner','like_count','save_count','comment_count','view_count','status')
-        read_only_fields=fields
+        model = Project #! think about show like in project detail
+        fields = ('id', 'project_name', "title", 'project_file', "description", 'stage', 'created_at', 'owner', 'like_count', 'save_count', 'comment_count', 'view_count', 'status', 'chat_group_id', 'github_link')
+        read_only_fields = fields
+
+    def get_chat_group_id(self, obj):
+        try:
+            return str(obj.chat_group.id) if hasattr(obj, 'chat_group') and obj.chat_group else None
+        except Exception:
+            return None
     
         
 
 #! this ser user for give project owner role list
+#  and used in where user apply (ex:home apply feed apply and other user profile)
 class GetJobRoleSerializer(serializers.ModelSerializer):
     required_skills = SkillSerializer(many=True, read_only=True)
 
     class Meta:
         model = RoleNeeded
-        fields = ("id", "title", "description", "slots_available", "required_skills", "is_open", "created_at","role","is_complete")
+        fields = ("id", "project", "title", "description", "slots_available", "required_skills", "is_open", "created_at","role","is_complete",'application_count')
 
 #! this ser used for create a role
 class CreateJobRoleSerializer(serializers.ModelSerializer):
@@ -111,7 +152,7 @@ class CreateJobRoleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RoleNeeded
-        fields = ("title", "description", "slots_available", "required_skills", "is_open")
+        fields = ("title", "description", "slots_available", "required_skills", "is_open",'role')
 
     def validate_title(self, value):
         """Validate role title is not empty and reasonable length."""
@@ -185,7 +226,8 @@ class ApplictionSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Application
-        fields=("id",'message','status','apply_role_purpose','github_link','portfolio_link','project_link')
+        fields=("id",'message','status','github_link','portfolio_link','project_link')
+        read_only_fields = ('id', 'status')
 
     def validate_message(self, value):
         
@@ -195,26 +237,22 @@ class ApplictionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Message must not exceed 1000 characters.")
         return value.strip() if value else value
 
-    def validate_apply_role_purpose(self, value):
-        if value:
-            valid_purposes = [choice[0] for choice in Application.purpose.choices]
-            if value not in valid_purposes:
-                raise serializers.ValidationError(f"Purpose must be one of: {', '.join(valid_purposes)}")
-        return value
-
+   
     def validate(self, data):
 
         message = data.get('message', '').strip() if data.get('message') else ''
-        purpose = data.get('apply_role_purpose','')
         
-        if not message and not purpose:
-            raise serializers.ValidationError("Either a message or role purpose must be provided.")
+        
+        if not message :
+            raise serializers.ValidationError("message purpose must be provided.")
         
         return data
 
     def create(self, validated_data):
         user=self.context['request'].user
-        appliction=Application.objects.create(user=user,**validated_data)
+        apply_role=self.context['roles']
+        print(apply_role)
+        appliction=Application.objects.create(apply_role_purpose=apply_role,user=user,**validated_data)
         return appliction
         
 #! this ser used for project owner appliction list
@@ -222,14 +260,14 @@ class GetapplictionSerializar(serializers.ModelSerializer):
     applied_user= ApplictionProfileSerializer(source='user.user_profile',read_only=True)
     class Meta:
         model=Application 
-        fields=('id','message','apply_role_purpose','status','created_at','applied_user')
+        fields=('id','message','apply_role_purpose','status','created_at','applied_user','user')
         read_only_fields=fields    
     
 class GetapplictionDetileSerializar(serializers.ModelSerializer):
     applied_user= ApplictionProfileSerializer(source='user.user_profile',read_only=True)
     class Meta:
         model=Application 
-        fields=('message','apply_role_purpose','status','created_at','github_link','portfolio_link','applied_user')
+        fields=('message','apply_role_purpose','status','created_at','github_link','portfolio_link','project_link','applied_user','user')
         read_only_fields=fields    
     
     
@@ -252,25 +290,26 @@ and how many i join project
 
 class AppliedApplictionDetilesSerializer(serializers.ModelSerializer):
     role= GetJobRoleSerializer(read_only=True)
-    project=ProjectDetailSerializer(source='role.project',read_only=True)
+    project_name=serializers.CharField(source='role.project.project_name', read_only=True)
     project_owner= ApplictionProfileSerializer(source='role.project.owner.user_profile',read_only=True) #! this er return project owner
     class Meta:
         model=Application
-        fields=('id','message','apply_role_purpose','status','created_at','github_link','portfolio_link','role','project','project_owner',)
+        fields=('id','message','apply_role_purpose','status','created_at','github_link','portfolio_link','role','project_name','project_owner',)
 
 class AppliedApplictionListSerializer(serializers.ModelSerializer):
     project_name=serializers.CharField(source='role.project.project_name', read_only=True)
     role_title = serializers.CharField(source='role.title', read_only=True)
+    project_owner= ApplictionProfileSerializer(source='role.project.owner.user_profile',read_only=True) #! this er return project owner
     class Meta:
         model=Application
-        fields=('id','message','apply_role_purpose','status','created_at','project_name', 'role_title')
+        fields=('id','message','apply_role_purpose','status','created_at','project_name', 'role_title',"project_owner")
 
           
 class ProjectJoinSerializer(serializers.ModelSerializer):
-    project=ProjectListSerializer()
+    project_name = serializers.CharField(source='project.project_name', read_only=True)
     class Meta:
-        model=Membership
-        fields = ('is_active','role_title','joined_at','project')
+        model = Membership
+        fields = ('is_active', 'role_title', 'joined_at', 'project', 'project_name')
 
 
 
@@ -284,7 +323,7 @@ class SentRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model=RequestJoinProjet
         fields=('id','created_at',"message","receiver_user",'project','role','status')
-        read_only_fields=['id','created_at']
+        read_only_fields = ['id', 'created_at', 'status']
         
         
     def validate(self, attrs):
@@ -301,6 +340,9 @@ class SentRequestSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This role does not belong to this project.")
         if receiver == user:
             raise serializers.ValidationError("You cannot send a request to yourself.")
+        # Check if a pending request already exists for this user in this project
+        if RequestJoinProjet.objects.filter(project=project,receiver_user=receiver,status=RequestJoinProjet.Status.PENDING).exists():
+            raise serializers.ValidationError('you only send one request in one project')
             
         if Membership.objects.filter(user=receiver, project=project, is_active=True).exists():
             raise serializers.ValidationError("This user is already an active member of the project.")
