@@ -1,4 +1,5 @@
 # service.py
+import uuid
 from django.utils import timezone
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -36,16 +37,21 @@ def notify(recipient_id, sender_id, notif_type, title, body, project_id=None):
         return None
     
     if  recipient.notifiction_enable:
-      
-
-        notification = Notification.objects.create(
-            recipient  = recipient,
-            sender     = sender,
-            notif_type = notif_type,
-            title      = title,
-            body       = body,
-            project    = project,
-        )
+        # Real-time only for chat messages: Do NOT persist to Notification model database
+        if notif_type == "new_message" or notif_type == Notification.Type.NEW_MESSAGE:
+            notification_id = str(uuid.uuid4())
+            created_at = timezone.now().isoformat()
+        else:
+            notification = Notification.objects.create(
+                recipient  = recipient,
+                sender     = sender,
+                notif_type = notif_type,
+                title      = title,
+                body       = body,
+                project    = project,
+            )
+            notification_id = str(notification.id)
+            created_at = notification.created_at.isoformat()
 
         try:
             channel_layer = get_channel_layer()
@@ -54,7 +60,7 @@ def notify(recipient_id, sender_id, notif_type, title, body, project_id=None):
                     f"notifications_{recipient.id}",
                     {
                         "type":        "send_notification",
-                        "id":          str(notification.id),
+                        "id":          notification_id,
                         "notif_type":  notif_type,
                         "title":       title,
                         "body":        body,
@@ -62,13 +68,13 @@ def notify(recipient_id, sender_id, notif_type, title, body, project_id=None):
                         "post_id":     str(project.id) if project else None,
                         "sender_name": get_user_name(sender),
                         "is_read":     False,
-                        "created_at":  notification.created_at.isoformat(),
+                        "created_at":  created_at,
                     }
                 )
         except Exception as e:
             print(f"WebSocket notification error: {e}")
 
-        return str(notification.id)
+        return notification_id
 
 
 
@@ -79,7 +85,7 @@ def notify_application_received(application):
         recipient_id = application.role.project.owner.id,
         sender_id    = application.user.id,
         notif_type   = Notification.Type.APPLICATION_RECEIVED,
-        title        = "New Application Received",
+        title        = "Application Received",
         body         = f"{applicant_name} applied for '{application.role.project.project_name}'.",
         project_id   = application.role.project.id,
     )
@@ -146,8 +152,29 @@ def notify_remove_member(recipient_id, project_owner, project):
         sender_id=project_owner.id,
         project_id=project.id,
         notif_type=Notification.Type.REMOVE_MEMBER,
-        title  = "Remove in project",
-        body  = f"{owner_username} Remove  Yoe in '{project.project_name}'.",
-        
-        
+        title  = "Removed from project",
+        body  = f"{owner_username} removed you from '{project.project_name}'.",
+    )
+
+
+def notify_join_request_sent(join_req):
+    owner_name = get_user_name(join_req.request_owner)
+    notify.delay(
+        recipient_id = join_req.receiver_user.id,
+        sender_id    = join_req.request_owner.id,
+        notif_type   = Notification.Type.JOIN_REQUEST_SENT,
+        title        = "Project Invitation",
+        body         = f"{owner_name} invited you to join '{join_req.project.project_name}'.",
+        project_id   = join_req.project.id,
+    )
+
+def notify_join_request_accepted(join_req):
+    user_name = get_user_name(join_req.receiver_user)
+    notify.delay(
+        recipient_id = join_req.request_owner.id,
+        sender_id    = join_req.receiver_user.id,
+        notif_type   = Notification.Type.JOIN_REQUEST_ACCEPTED,
+        title        = "Invitation Accepted",
+        body         = f"{user_name} accepted your invitation to join '{join_req.project.project_name}'.",
+        project_id   = join_req.project.id,
     )

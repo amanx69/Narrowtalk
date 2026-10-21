@@ -24,7 +24,9 @@ class NotificationConsumer(AsyncWebsocketConsumer):
 
         @database_sync_to_async
         def get_initial_data():
-            unread_count = user.notifications.filter(is_read=False).count()
+            unread_count = user.notifications.filter(
+                is_read=False
+            ).exclude(notif_type=Notification.Type.NEW_MESSAGE).count()
             username = user.username
             return unread_count, username
 

@@ -12,6 +12,11 @@ class ProjectUpdatethrottle(UserRateThrottle):
 
 class ProjectDeletethrottle(UserRateThrottle):
     scope='Project_delete'   
+class TransferOwnershipThrottle(UserRateThrottle):
+    scope = 'transfer_ownership'
+
+class CompleteProjectThrottle(UserRateThrottle):
+    scope = 'complete_project'
     
 #! appliction    
 class ApplictionCreatethrottle(UserRateThrottle):
@@ -66,4 +71,24 @@ class RemoveMemberThrottle(UserRateThrottle):
 
 class FeedbackThrottle(UserRateThrottle):
     scope="feedback"
+    
+    
+    
+# join request features throttle 
+
+class SendJoinRequestThrottle(UserRateThrottle):
+    scope="send_join_req"
+    
+    
+
+class acceptJoinRequestThrottle(UserRateThrottle):
+    scope="accept_join_req"
+    
+    
+class rejectJoinRequestThrottle(UserRateThrottle):
+    scope="reject_join_req"
+    
+    
+    
+
     
