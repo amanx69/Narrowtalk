@@ -16,7 +16,10 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from decouple import config
 #! this class handle update and get profile 
 from rest_framework.response import Response
+from django.db.models import Prefetch
+from apps.post.models import Project
 from core.throttling import *
+from core.pagination import UserSearchPagination
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from rest_framework.exceptions import NotFound
@@ -28,10 +31,21 @@ class ProfileView(RetrieveUpdateAPIView):
         if self.request.method  in ['PUT', 'PATCH']:
             return [ProfileUpdateThrottle()]
         return super().get_throttles()
-    
+ 
 
     def get_object(self):
-        return self.request.user.user_profile
+        projects_qs = (
+            Project.objects.filter(is_delete=False)
+            .select_related('owner__user_profile')
+            .order_by('-created_at')
+        )
+        return get_object_or_404(
+            Profile.objects.select_related('user').prefetch_related(
+                'skills',
+                Prefetch('user__projects_owner', queryset=projects_qs)
+            ),
+            user=self.request.user
+        )
 
     def retrieve(self, request, *args, **kwargs):
         cache_key = f"user_profile_v1_:{request.user.id}"
@@ -94,8 +108,17 @@ class GetOtherUserProfile(RetrieveAPIView):
         
         if cached_data is not None:
             return Response(cached_data)
+
+        projects_qs = (
+            Project.objects.filter(is_delete=False)
+            .select_related('owner__user_profile')
+            .order_by('-created_at')
+        )
         profile = get_object_or_404(
-            Profile.objects.prefetch_related('user__projects_owner'),
+            Profile.objects.select_related('user').prefetch_related(
+                'skills',
+                Prefetch('user__projects_owner', queryset=projects_qs)
+            ),
             user__id=user_id
         )
         serializer = self.get_serializer(profile)
@@ -115,16 +138,17 @@ class GetOtherUserProfile(RetrieveAPIView):
 class SearchProfilesView(ListAPIView):
     serializer_class=SearchResultProfileSerializer
     permission_classes=[IsAuthenticated]
+    pagination_class= UserSearchPagination
     
     filter_backends = [filters.SearchFilter]
-    search_fields = ['^username','=user__email']
+    search_fields = ['^username','=user__email','availability']
     def get_queryset(self):
         from apps.safety.models import UserBlock
         blocked_by_me = UserBlock.objects.filter(blocker=self.request.user).values_list('blocked_user_id', flat=True)
         blocked_me = UserBlock.objects.filter(blocked_user=self.request.user).values_list('blocker_id', flat=True)
         blocked_users_ids = set(blocked_by_me).union(set(blocked_me))
         
-        return Profile.objects.exclude(user=self.request.user).exclude(user_id__in=blocked_users_ids)
+        return Profile.objects.select_related('user').exclude(user=self.request.user).exclude(user_id__in=blocked_users_ids).order_by('-created_at')
     
     
     

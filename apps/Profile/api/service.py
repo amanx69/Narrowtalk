@@ -15,8 +15,8 @@ def Profile_like(user,profile):
             Profile.objects.filter(id=profile.id).update(
                 profile_like=F('profile_like')-1
             )
-            cache.delete(f'user_profile_v2:{profile.user.id}')
-            cache.delete(f'user_profile_v2:{profile.user.id}')
+            cache.delete(f"user_profile_v1_:{profile.user.id}")
+            cache.delete(f"other_profile_v2_:{profile.user.id}")
             return Response({
                     "message":f"unlike{profile.id}"
                 },status.HTTP_200_OK)
@@ -28,7 +28,8 @@ def Profile_like(user,profile):
         Profile.objects.filter(id=profile.id).update(
                         profile_like=F('profile_like')+1
                     )
-        cache.delete(f'user_profile_v2:{profile.user.id}')
+        cache.delete(f"user_profile_v1_:{profile.user.id}")
+        cache.delete(f"other_profile_v2_:{profile.user.id}")
         return Response({
             "message":f"like on{profile.id}"
         })
