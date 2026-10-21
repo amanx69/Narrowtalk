@@ -12,7 +12,7 @@ def toggle_like(user,project):
     with transaction.atomic():
         if like:
             like.delete()
-            Project.objects.filter(id=project.id).update(
+            Project.objects.filter(id=project.id,like_count__gt=0).update(
                 like_count=F('like_count') - 1
             )
             liked = False
@@ -31,9 +31,10 @@ def toggle_like(user,project):
 def toggle_save(user,project):
     existing_save = Projectsave.objects.filter(user=user, project=project).first()
     with transaction.atomic():
-        if existing_save:
+        if existing_save :
             existing_save.delete()
-            Project.objects.filter(id=project.id).update(
+    
+            Project.objects.filter(id=project.id,save_count__gt=0).update(
                 save_count=F('save_count') - 1
             )
             saved = False
@@ -50,16 +51,23 @@ def toggle_save(user,project):
     
 
 #! incremant the view
-def increment_view_count(project_id,user_id):
-    _,created=ProjectView.objects.get_or_create(project=project_id,user=user_id)
+def increment_view_count(project_id, user_id):
+    _, created = ProjectView.objects.get_or_create(project_id=project_id, user_id=user_id)
 
     if created:
         with transaction.atomic():
-            project=Project.objects.filter(id=project_id).update(
+            Project.objects.filter(id=project_id).update(
                 view_count=F('view_count') + 1
             )
-    
-            project.refresh_from_db(fields=['view_count'])
+        cache.delete('best_ideas_strip_v1')
+
+    project = Project.objects.filter(id=project_id).values('view_count').first()
+    view_count = project['view_count'] if project else 0
+    return {
+        "created": created,
+        "view_count": view_count,
+        "project_id": str(project_id),
+    }
     
         
     

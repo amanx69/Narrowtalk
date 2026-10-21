@@ -18,6 +18,10 @@ class ProjectLike(models.Model):
     class Meta:
         unique_together = ['user','project']
         ordering=['created_at']
+        indexes = [
+            models.Index(fields=['project', 'user']),
+            models.Index(fields=['user', '-created_at']),
+        ]
      
     
     
@@ -35,7 +39,8 @@ class Projectcomment(models.Model):
     
     class Meta:
         indexes=[
-            models.Index(fields=['created_at'])
+            models.Index(fields=['project', 'created_at']),
+            models.Index(fields=['created_at']),
         ]
         
     
@@ -54,6 +59,9 @@ class Projectsave(models.Model):
     
     class Meta:
         unique_together = ['user','project']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+        ]
         
 
 class ProjectView(models.Model):
