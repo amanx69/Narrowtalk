@@ -13,13 +13,22 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
             return True
         return obj.owner == request.user
 
-class IsProjectOwner(permissions.BasePermission):
+class IsProjectOwner(permissions.BasePermission): # this permission used for appliction endpoints 
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
                 return True
         return obj.role.project.owner == request.user
     
 
+
+class IsRoleOwner(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+                    return True
+        return obj.project.owner == request.user
+        
+    
+    
 class IsProjectMember(permissions.BasePermission):
     
     def has_object_permission(self, request, view, obj):
@@ -29,6 +38,20 @@ class IsProjectMember(permissions.BasePermission):
         ).exists()
 
 
-
-
-"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzg3ODkxNDUxLCJpYXQiOjE3ODc0NTk0NTEsImp0aSI6Ijk3ZDM0NWQzNmEwYjQ0ZjFhYTY5NTRlZmVmM2Q4NTc3IiwidXNlcl9pZCI6IjJkNDE3YjlkLTBhNDItNDdmNC04OGM3LTc4YTBlYzE2NmM0NSJ9.aYMLkNXcbSZIvfE4hC5LYH2j-bjmzKdfiybzlzLAkww"
+class IsProjectownerRemove(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+            if request.method in permissions.SAFE_METHODS:
+                        return True
+            return obj.project.owner == request.user
+            
+        
+class IsJoinRequestReceiver(permissions.BasePermission):
+    def has_object_permission(self,request,view,obj):
+        return obj.receiver_user==request.user
+    
+    # this permission for project dont confuse in IsProjectowner and this  this per used in project saficific ex:( make complete project)
+class IsProjectOwnerForProject(permissions.BasePermission):
+    def has_object_permission(self,request,view,obj):
+        return obj.owner==request.user
+    
+    

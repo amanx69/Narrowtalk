@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F
 from apps.post.models import *
@@ -11,7 +12,7 @@ def toggle_like(user,project):
     with transaction.atomic():
         if like:
             like.delete()
-            Project.objects.filter(id=project.id).update(
+            Project.objects.filter(id=project.id,like_count__gt=0).update(
                 like_count=F('like_count') - 1
             )
             liked = False
@@ -22,16 +23,18 @@ def toggle_like(user,project):
                         )
             liked=True 
     project.refresh_from_db(fields=['like_count'])
-    return{"liked": liked, "like_count": project.like_count}
+    cache.delete(f'home_feed_cache_v2_{user.id}')
+    return{"liked": liked, "like_count": project.like_count,"project_id":project.id}
             
         
 
 def toggle_save(user,project):
     existing_save = Projectsave.objects.filter(user=user, project=project).first()
     with transaction.atomic():
-        if existing_save:
+        if existing_save :
             existing_save.delete()
-            Project.objects.filter(id=project.id).update(
+    
+            Project.objects.filter(id=project.id,save_count__gt=0).update(
                 save_count=F('save_count') - 1
             )
             saved = False
@@ -42,18 +45,29 @@ def toggle_save(user,project):
             )
             saved = True
     project.refresh_from_db(fields=['save_count'])
-    return {"saved": saved, "save_count": project.save_count}
+    cache.delete(f'home_feed_cache_v2_{user.id}')
+    return {"saved": saved, "save_count": project.save_count,"project_id":project.id}
     
     
 
 #! incremant the view
-def increment_view_count(project_id,user_id):
-    _,created=ProjectView.objects.get_or_create(project=project_id,user=user_id)
+def increment_view_count(project_id, user_id):
+    _, created = ProjectView.objects.get_or_create(project_id=project_id, user_id=user_id)
 
     if created:
         with transaction.atomic():
             Project.objects.filter(id=project_id).update(
                 view_count=F('view_count') + 1
             )
+        cache.delete('best_ideas_strip_v1')
+
+    project = Project.objects.filter(id=project_id).values('view_count').first()
+    view_count = project['view_count'] if project else 0
+    return {
+        "created": created,
+        "view_count": view_count,
+        "project_id": str(project_id),
+    }
+    
         
-    return created
+    

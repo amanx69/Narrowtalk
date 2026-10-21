@@ -2,7 +2,8 @@ from django.db import models
 import uuid
 from django.contrib.auth.models import AbstractBaseUser,BaseUserManager, PermissionsMixin
 import secrets
-
+import random
+from django.utils import timezone
 
 class UserManage(BaseUserManager):
     
@@ -21,17 +22,18 @@ class UserManage(BaseUserManager):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
+        extra_fields.setdefault('is_verify',True)
         return self.create_user(email, password, **extra_fields)
 
 class User(AbstractBaseUser,PermissionsMixin):
     
     id= models.UUIDField(primary_key=True, unique=True,editable=False,default=uuid.uuid4)
-    email= models.EmailField(unique=True)
+    email= models.EmailField(unique=True,null=False,blank=False)
     is_staff= models.BooleanField(default=False)
     is_active= models.BooleanField(default=True)
     is_verify= models.BooleanField(default=False)
-    in_project_count=models.PositiveIntegerField(default=0) 
     created_at= models.DateTimeField(auto_now_add=True)
+    notifiction_enable=models.BooleanField(default=True)
     
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -52,6 +54,12 @@ class User(AbstractBaseUser,PermissionsMixin):
             pass
         return self.email.split("@")[0] if self.email else ""
     
+    class Meta:
+        indexes=[
+            models.Index(fields=['created_at']),
+            models.Index(fields=['email'])
+        ]
+    
     
 
     
@@ -60,7 +68,7 @@ class User(AbstractBaseUser,PermissionsMixin):
 class Emailverifiction(models.Model):
     user= models.ForeignKey(User,on_delete=models.CASCADE)
     id= models.UUIDField(primary_key=True, unique=True,editable=False,default=uuid.uuid4)
-    token_hash= models.CharField(unique=True,) 
+    otp=models.CharField()
     purpose_= [
         ("RESETPASSWORD","resetpassword"),
         ("VERIFY","verify")
@@ -68,15 +76,38 @@ class Emailverifiction(models.Model):
     purpose= models.CharField(choices=purpose_,null=False,blank=False)
     created_at= models.DateTimeField(auto_now_add=True)
     used_it=models.BooleanField(default=False)
-    
-    def __str__(self):
-        return f"{self.user.email} to {self.token_hash}"
+    attempts=models.PositiveIntegerField(default=0)
+
     
     
     def is_expire(self):
         
         from django.utils import timezone
-        return (timezone.now() - self.created_at).total_seconds() > 3600
+        return (timezone.now() - self.created_at).total_seconds() > 600
     
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} to {self.otp}"    
+    
+    
+class PasswordResetToken(models.Model):
+    id=models.UUIDField(primary_key=True,unique=True,editable=False,default=uuid.uuid4)
+    user= models.ForeignKey(User,on_delete=models.CASCADE,related_name="user_passord_token")
+    token=models.CharField(max_length=64,unique=True)
+    expires_at = models.DateTimeField()
+    used_it = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_expired(self):
+        return timezone.now() >= self.expires_at
+    
+    
+    def __str__(self):
+        return f"{self.user.email} of {self.token}"
     
     

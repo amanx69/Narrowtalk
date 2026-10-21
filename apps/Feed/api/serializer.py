@@ -1,14 +1,16 @@
 from rest_framework import serializers
-from ..models import Projectcomment 
+from ..models import Projectcomment ,Projectsave
 from apps.post.models import Project
 from apps.Profile.api.serializer import InFeedProfile ,InCommentProfile
 from apps.Profile.models import Skill
 from apps.post.models import RoleNeeded
+from apps.post.api.serializers import ProjectListSerializer
 
 class CommentSerlizer(serializers.ModelSerializer):
     class Meta:
         model=Projectcomment  
-        fields=('text',"created_at")   
+        fields=('text',"created_at")
+        read_only_fields = ('created_at',)   
     def validate_text(self,value):
         value=value.strip()
         if not value:
@@ -33,71 +35,99 @@ class CommentSerlizer(serializers.ModelSerializer):
         
         
 class GetCommentSerializer(serializers.ModelSerializer):
-    user= InCommentProfile(source='user.user_profile',read_only=True)
+    user_profile= InCommentProfile(source='user.user_profile',read_only=True)
+    user=serializers.UUIDField(source='user.id',read_only=True)
     class Meta:
         model=Projectcomment
-        fields=('text',"created_at",'id','user')  
+        fields=('text',"created_at",'id','user_profile','user')  
          
         read_only_fields=fields
        
        
        
-       
-        
-    
 class SkillMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model = Skill
         fields = ['id', 'name']
 
-class FeedSerializer(serializers.ModelSerializer):
-    required_skills = serializers.SerializerMethodField()
-    owner = InFeedProfile(source="owner.user_profile",read_only=True)
-    is_liked = serializers.BooleanField(read_only=True, default=False)
-    is_saved = serializers.BooleanField(read_only=True, default=False)
+from core.helpers import CompressedMediaFileField
 
-    def get_required_skills(self, obj):
-        skills = []
-        seen = set()
-        for role in obj.roles.all():
-            for skill in role.required_skills.all():
-                if skill.id not in seen:
-                    seen.add(skill.id)
-                    skills.append(skill)
-        return SkillMiniSerializer(skills, many=True).data
+class FeedSerializer(serializers.ModelSerializer):
+    owner_profile = InFeedProfile(source="owner.user_profile",read_only=True)
+    project_file = CompressedMediaFileField(read_only=True)
+    is_liked = serializers.SerializerMethodField()
+    is_saved = serializers.SerializerMethodField()
+
+    def get_is_liked(self, obj):
+        if hasattr(obj, 'is_liked_by_user'):
+            return obj.is_liked_by_user
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return ProjectLike.objects.filter(user=request.user, project=obj).exists()
+        return False
+        
+    def get_is_saved(self, obj):
+        if hasattr(obj, 'is_saved_by_user'):
+            return obj.is_saved_by_user
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Projectsave.objects.filter(user=request.user, project=obj).exists()
+        return False
+
+ 
 
     class Meta:
         model = Project
         fields = [
-            'id', 'title', 'description',
+            'id', 'title', 'description','project_name',
             'like_count', 'save_count', 'comment_count',
-            'view_count', 'application_count',
-            'owner', 'is_liked', 'is_saved', 'created_at',"required_skills",
+            'view_count', 'member_count','project_file',
+            'owner','owner_profile', 'is_liked', 'is_saved', 'created_at',
+            'github_link','stage'
         ]
         read_only_fields=fields
 
 
 
-class HomeFeedSerializer(serializers.ModelSerializer):
-    required_skills = serializers.SerializerMethodField()
-    owner = InFeedProfile(source="owner.user_profile",read_only=True)
+from ..models import ProjectLike, Projectsave
 
-    def get_required_skills(self, obj): #TODO optmize later  both
-        skills = []
-        seen = set()
-        for role in obj.roles.all():
-            for skill in role.required_skills.all():
-                if skill.id not in seen:
-                    seen.add(skill.id)
-                    skills.append(skill)
-        return SkillMiniSerializer(skills, many=True).data
+class HomeFeedSerializer(serializers.ModelSerializer):
+    owner = InFeedProfile(source="owner.user_profile",read_only=True)
+    owner_id=serializers.UUIDField(source="owner.id",read_only=True)
+    project_file = CompressedMediaFileField(read_only=True)
+    is_liked = serializers.SerializerMethodField()
+    is_saved = serializers.SerializerMethodField()
 
     class Meta:
         model=Project
         fields = [
-                    'id', 'title', 'description',
+                    'id','project_name', 'title', 'description',
                     'like_count', 'save_count', 'comment_count',
-                    'view_count', 'application_count',
-                    'owner', 'created_at',"required_skills",
+                    'view_count', 'member_count','project_file',
+                    'owner', 'is_liked', 'is_saved', 'created_at',
+                    "owner_id", 'github_link','stage'
                 ]
         read_only_fields=fields
+
+    def get_is_liked(self, obj):
+        if hasattr(obj, 'is_liked_by_user'):
+            return obj.is_liked_by_user
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return ProjectLike.objects.filter(user=request.user, project=obj).exists()
+        return False
+        
+    def get_is_saved(self, obj):
+        if hasattr(obj, 'is_saved_by_user'):
+            return obj.is_saved_by_user
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Projectsave.objects.filter(user=request.user, project=obj).exists()
+        return False
+        
+class ProjectSaveSerializer(serializers.ModelSerializer):
+    project= ProjectListSerializer(read_only=True)
+    class Meta:
+        model=Projectsave
+        fields=("created_at",'project')
+        

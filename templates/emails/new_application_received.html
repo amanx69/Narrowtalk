@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
+        .header { background-color: #4CAF50; color: #ffffff; padding: 20px; text-align: center; }
+        .header h2 { margin: 0; font-size: 24px; }
+        .content { padding: 30px; line-height: 1.6; }
+        .highlight { color: #4CAF50; font-weight: bold; }
+        .message-box { background-color: #f9f9f9; border-left: 4px solid #4CAF50; padding: 15px; margin: 20px 0; font-style: italic; }
+        .footer { background-color: #f4f4f4; color: #888888; padding: 15px; text-align: center; font-size: 12px; border-top: 1px solid #eeeeee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>New Application Received! 🎉</h2>
+        </div>
+        <div class="content">
+            <p>Hi <strong>{{ owner_username }}</strong>,</p>
+            <p>Great news! <strong>{{ applicant_username }}</strong> has just applied for the <span class="highlight">{{ role_title }}</span> role in your project <strong>{{ project_name }}</strong>.</p>
+            
+            <p>Here is a short preview of their application message:</p>
+            <div class="message-box">
+                "{{ message|truncatewords:30 }}"
+            </div>
+            
+            <p>Log in to your dashboard to review their full application, check their portfolio, and decide whether to accept or reject them.</p>
+            <p>Good luck building your team!</p>
+        </div>
+        <div class="footer">
+            <p>&copy; 2026 YourAppName. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

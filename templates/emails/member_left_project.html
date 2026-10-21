@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
+        .header { background-color: #E53935; color: #ffffff; padding: 20px; text-align: center; }
+        .header h2 { margin: 0; font-size: 24px; }
+        .content { padding: 30px; line-height: 1.6; }
+        .footer { background-color: #f4f4f4; color: #888888; padding: 15px; text-align: center; font-size: 12px; border-top: 1px solid #eeeeee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Team Update</h2>
+        </div>
+        <div class="content">
+            <p>Hi <strong>{{ owner_username }}</strong>,</p>
+            <p>We are writing to let you know that <strong>{{ leaving_username }}</strong> has decided to leave your project <strong>{{ project_name }}</strong>.</p>
+            
+            {% if role_title %}
+            <p>They were occupying the role of <strong>{{ role_title }}</strong>.</p>
+            {% endif %}
+            
+            <p>This means you now have an empty slot available for this role. You can head over to your project dashboard to re-open the role or review new applications.</p>
+            <p>Keep building great things!</p>
+        </div>
+        <div class="footer">
+            <p>&copy; 2026 YourAppName. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

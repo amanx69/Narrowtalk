@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: #f9fafb;
+            margin: 0;
+            padding: 0;
+            color: #111827;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .header {
+            background-color: #111827;
+            padding: 30px 40px;
+            text-align: center;
+        }
+        .header h1 {
+            color: #ffffff;
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: 2px;
+        }
+        .content {
+            padding: 40px;
+        }
+        .content h2 {
+            color: #111827;
+            font-size: 20px;
+            margin-top: 0;
+        }
+        .content p {
+            color: #4b5563;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #f97316;
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+            text-align: center;
+        }
+        .footer {
+            background-color: #f3f4f6;
+            padding: 20px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>NARROW</h1>
+        </div>
+        <div class="content">
+            <h2>Application Accepted! 🎉</h2>
+            <p>Hi {{ user.username }},</p>
+            <p>Great news! Your application for the role of <strong>{{ role.title }}</strong> on the project <strong>"{{ project.project_name }}"</strong> has been accepted.</p>
+            <p>The team is excited to have you on board. Jump into the app to meet your new teammates and get started!</p>
+            <div style="text-align: center; margin-top: 32px;">
+                <a href="{{ project_url }}" class="btn">View Project</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>Built with ❤️ by Narrow</p>
+        </div>
+    </div>
+</body>
+</html>
