@@ -86,9 +86,13 @@ class Emailverifiction(models.Model):
         return (timezone.now() - self.created_at).total_seconds() > 600
     
     
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+        ]
+
     def __str__(self):
         return f"{self.user.email} to {self.otp}"    
-    
     
     
 class PasswordResetToken(models.Model):
