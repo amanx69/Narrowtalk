@@ -6,7 +6,7 @@ from .views import (
     SendMessageView,
     ListOfGroupMember,
     GroupMediaListView,
-
+    DeleteMessageView,
 )
 
 urlpatterns = [
@@ -15,7 +15,9 @@ urlpatterns = [
     path('update-chatroom/<uuid:id>/', UpdateChatRoomView.as_view(), name='update-chatroom'),
     path('<uuid:group_id>/send-message/', SendMessageView.as_view(), name='send_message'),
     path('<uuid:group_id>/members/', ListOfGroupMember.as_view(), name='group_members'),
-    path('<uuid:group_id>/media/', GroupMediaListView.as_view(), name='group_media'),
+   # path('<uuid:group_id>/media/', GroupMediaListView.as_view(), name='group_media'),
+    path('messages/<uuid:id>/delete/', DeleteMessageView.as_view(), name='delete_message'),
+    path('<uuid:group_id>/messages/<uuid:id>/delete/', DeleteMessageView.as_view(), name='group_message_delete'),
 ]
 
 

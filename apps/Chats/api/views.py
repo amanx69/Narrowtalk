@@ -1,4 +1,5 @@
-from rest_framework.generics import ListAPIView, UpdateAPIView, CreateAPIView
+from rest_framework.generics import ListAPIView, UpdateAPIView, CreateAPIView, DestroyAPIView
+from django.db.models import Q
 from .serializers import (
     ChatGroupeListSerializer,
     MessageSerilizer,
@@ -16,11 +17,20 @@ from rest_framework.exceptions import PermissionDenied
 
 #! chat list 
 class ChatListViews(ListAPIView):
-    serializer_class=ChatGroupeListSerializer
-    permission_classes=[IsAuthenticated]
+    serializer_class = ChatGroupeListSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        return  ChatGroup.objects.filter(members__user=self.request.user)
+        from django.db.models import Max
+        return ChatGroup.objects.filter(
+            members__user=self.request.user,
+            members__is_active=True,
+            project__is_active=True ,project__is_delete=False,
+            
+        ).annotate(
+            latest_msg_time=Max('messages__created_at')
+        ).order_by('-latest_msg_time', '-created_at').distinct()
+
     
     
 class ChatMessageHistoryView(ListAPIView):
@@ -30,12 +40,11 @@ class ChatMessageHistoryView(ListAPIView):
     
     
     def get_queryset(self):
-        return  Message.objects.filter(
+        return Message.objects.filter(
             group_id=self.kwargs['group_id'],
-            
-            group__members__user=self.request.user
-            
-        ).order_by('-created_at')
+            group__members__user=self.request.user,
+            group__members__is_active=True
+        ).select_related('sender__user_profile').prefetch_related('reactions').order_by('-created_at')
         
 #! class update chatroom
 
@@ -96,4 +105,23 @@ class GroupMediaListView(ListAPIView):
             group_id=group_id,
             file__isnull=False
         ).exclude(file="").order_by('-created_at')
+
+
+class DeleteMessageView(DestroyAPIView):
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        return Message.objects.filter(
+            Q(sender=self.request.user) |
+            Q(group__members__user=self.request.user, group__members__role=GroupMember.ChatRole.OWNER, group__members__is_active=True)
+        ).distinct()
+
+    def perform_destroy(self, instance):
+        if instance.file:
+            try:
+                instance.file.delete(save=False)
+            except Exception:
+                pass
+        instance.delete()
 
