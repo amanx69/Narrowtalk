@@ -21,6 +21,7 @@ from core.throttling import (
     rejectJoinRequestThrottle,
     
 )
+from django.core.cache import cache
 
 
 
@@ -36,9 +37,10 @@ class SendRequestForJoinProject(generics.CreateAPIView):
     def perform_create(self, serializer):
         try:
             join_req = serializer.save(request_owner=self.request.user)
-            JoinRequestSentMail.delay(join_req.id)
-            _safe_notify(notify_join_request_sent,join_req)
-        except IntegrityError:
+            _safe_notify(JoinRequestSentMail.delay, join_req.id)
+            _safe_notify(notify_join_request_sent, join_req)
+        except IntegrityError :
+            
             raise ValidationError({"detail": "You have already sent a request to this user for this role."})
     
         
@@ -52,21 +54,22 @@ class AcceptJoinRequest(APIView):
         queryset = RequestJoinProjet.objects.select_related('project', 'role', 'receiver_user')
         obj = get_object_or_404(queryset, id=request_id)
         self.check_object_permissions(request, obj)
+        # check if slot is 0 then reject
+        if not obj.role.is_open or obj.role.slots_available <= 0:
+            return Response({"error": "This role has no available slots left."}, status=status.HTTP_400_BAD_REQUEST)
         
         if obj.status == RequestJoinProjet.Status.ACCEPTED:
-            return Response({
-                "message":" you already accepted this request"
-            },status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "You have already accepted this request."}, status=status.HTTP_400_BAD_REQUEST)
         if obj.status != RequestJoinProjet.Status.PENDING:
             return Response(
-                {"detail": "Request is already processed."},
+                {"error": "Request is already processed."},
                 status=status.HTTP_400_BAD_REQUEST
             )
             
         #  Agar user already active member hai toh reject kar do
         if Membership.objects.filter(user=request.user, project=obj.project, is_active=True).exists():
             return Response(
-                {"detail": "You are already an active member of this project."},
+                {"error": "You are already an active member of this project."},
                 status=status.HTTP_400_BAD_REQUEST
             )
             
@@ -92,8 +95,9 @@ class AcceptJoinRequest(APIView):
             Update_profile_project_join.delay(request.user.user_profile.id)
             obj.save(update_fields=['status'])
             
-            JoinRequestAcceptedMail.delay(obj.id)
+            _safe_notify(JoinRequestAcceptedMail.delay, obj.id)
             _safe_notify(notify_join_request_accepted, obj)
+            cache.delete(f'project_memeber_v1:{obj.project.id}')
         return Response({"message":"join project succussfully"},status.HTTP_200_OK)
 
 
@@ -107,7 +111,7 @@ class RejectJoinRequest(APIView):
         self.check_object_permissions(request, obj)  
         if obj.status != RequestJoinProjet.Status.PENDING:
             return Response(
-                {"detail": "Request is already processed."},
+                {"error": "Request is already processed."},
                 status=status.HTTP_400_BAD_REQUEST
             )  
         obj.status = RequestJoinProjet.Status.REJECTED
@@ -123,7 +127,7 @@ class CurrentUserProjectNamesAPIView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Project.objects.filter(owner=self.request.user).only('id', 'project_name')
+        return Project.objects.filter(owner=self.request.user).only('id', 'project_name').order_by('-created_at')
 
 
 
@@ -137,7 +141,7 @@ class CurrentUserPendingRequestsListAPIView(generics.ListAPIView):
         return RequestJoinProjet.objects.filter(
             receiver_user=self.request.user, 
             status=RequestJoinProjet.Status.PENDING
-        ).select_related('project', 'role', 'request_owner__user_profile')
+        ).select_related('project', 'role', 'request_owner__user_profile').order_by('-created_at')
 
 class CurrentUserPendingRequestDetailAPIView(generics.RetrieveAPIView):
     serializer_class = GetRequestJoinProjectDetailSerializer
@@ -158,7 +162,7 @@ class CurrentUserSentRequestsListAPIView(generics.ListAPIView):
     def get_queryset(self):
         return RequestJoinProjet.objects.filter(
             request_owner=self.request.user
-        ).select_related('project', 'role', 'receiver_user__user_profile')
+        ).select_related('project', 'role', 'receiver_user__user_profile').order_by('-created_at')
 
 from ..serializers import SentRequestJoinProjectDetailSerializer
 
