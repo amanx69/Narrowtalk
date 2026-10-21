@@ -26,9 +26,20 @@ class Profile(models.Model):
     class Role(models.TextChoices):
         FOUNDER = "founder", "Founder"
         DEVELOPER = "developer", "Developer"
+        FRONTEND = "frontend", "Frontend Developer"
+        BACKEND = "backend", "Backend Developer"
+        FULL_STACK = "full_stack", "Full Stack Developer"
+        MOBILE_DEV = "mobile_dev", "Mobile Developer"
+        AI_ML = "ai_ml", "AI / ML Engineer"
+        DATA_SCIENTIST = "data_scientist", "Data Scientist"
+        DEVOPS = "devops", "DevOps / Cloud"
         DESIGNER = "designer", "Designer"
-        PRODUCT = "product", "Product"
-        MARKETING = "marketing" , "Marketing"
+        PRODUCT = "product", "Product Manager"
+        MARKETING = "marketing", "Marketing"
+        CONTENT = "content", "Content Creator"
+        COMMUNITY = "community", "Community Manager"
+        QA_TESTER = "qa_tester", "QA / Tester"
+        OTHER = "other", "Other"
         
 
     id=models.UUIDField(primary_key=True,editable=False,default=uuid.uuid4,unique=True)
@@ -37,7 +48,7 @@ class Profile(models.Model):
     bio= models.CharField(max_length=300,default="") 
     profile_pic= models.ImageField(upload_to="profile/")
     created_at= models.DateTimeField(auto_now_add=True)
-    username= models.CharField(max_length=25,default="") 
+    username= models.CharField(max_length=25,unique=True) 
     role=models.CharField(max_length=50,choices=Role.choices,default=Role.DEVELOPER)
     links = models.JSONField(default=dict, blank=True)
     skills=models.ManyToManyField(Skill,related_name="Profiles", blank=True)

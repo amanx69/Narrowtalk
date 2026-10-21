@@ -3,19 +3,10 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 
+from core.helpers import CompressedMediaFileField
+
 BAD_WORDS_LIST = ['fuck', 'asshole', 'motherfucker', 'pussy', 'land'] 
-class CompressedFileField(serializers.FileField):
-    def to_representation(self, value):
-        url = super().to_representation(value)
-        if url and '/upload/' in url:
-            if url.endswith('.pdf'):
-                return url
-            if url.endswith(('.mp4', '.mov', '.avi', '.webm')):
-                return url.replace('/upload/', '/upload/q_auto,f_auto,w_720/')
-                
-            
-            return url.replace('/upload/', '/upload/q_auto,f_auto,w_1080/')
-        return url
+CompressedFileField = CompressedMediaFileField
 class FeedBackSerializer(serializers.ModelSerializer):
     attachment=CompressedFileField(required=False)
     class Meta:

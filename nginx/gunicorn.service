@@ -1,0 +1,22 @@
+[Unit]
+Description=Gunicorn daemon for Narrow Django REST API (WSGI)
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/authsystem/backend
+EnvironmentFile=/home/ubuntu/authsystem/backend/.env
+ExecStart=/home/ubuntu/authsystem/.venv/bin/gunicorn \
+    config.wsgi:application \
+    --workers 3 \
+    --bind 127.0.0.1:8000 \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile -
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+

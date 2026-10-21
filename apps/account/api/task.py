@@ -31,7 +31,7 @@ def send_verification_email(id):
     msg = EmailMultiAlternatives(
         subject="Your Email Verification OTP",
         body=text_content,
-        from_email="noreply@Narrow.com",
+        from_email=settings.DEFAULT_FROM_EMAIL,
         to=[user.email],
     )
 
@@ -61,7 +61,7 @@ def send_reset_password_email(id):
     msg = EmailMultiAlternatives(
         subject="Password Reset OTP",
         body=text_content,
-        from_email="noreply@Narrow.com",
+        from_email=settings.DEFAULT_FROM_EMAIL,
         to=[user.email],
     )
 

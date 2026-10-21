@@ -9,7 +9,8 @@ from apps.post.api.serializers import ProjectListSerializer
 class CommentSerlizer(serializers.ModelSerializer):
     class Meta:
         model=Projectcomment  
-        fields=('text',"created_at")   
+        fields=('text',"created_at")
+        read_only_fields = ('created_at',)   
     def validate_text(self,value):
         value=value.strip()
         if not value:
@@ -34,10 +35,11 @@ class CommentSerlizer(serializers.ModelSerializer):
         
         
 class GetCommentSerializer(serializers.ModelSerializer):
-    user= InCommentProfile(source='user.user_profile',read_only=True)
+    user_profile= InCommentProfile(source='user.user_profile',read_only=True)
+    user=serializers.UUIDField(source='user.id',read_only=True)
     class Meta:
         model=Projectcomment
-        fields=('text',"created_at",'id','user')  
+        fields=('text',"created_at",'id','user_profile','user')  
          
         read_only_fields=fields
        
@@ -48,8 +50,11 @@ class SkillMiniSerializer(serializers.ModelSerializer):
         model = Skill
         fields = ['id', 'name']
 
+from core.helpers import CompressedMediaFileField
+
 class FeedSerializer(serializers.ModelSerializer):
-    owner = InFeedProfile(source="owner.user_profile",read_only=True)
+    owner_profile = InFeedProfile(source="owner.user_profile",read_only=True)
+    project_file = CompressedMediaFileField(read_only=True)
     is_liked = serializers.SerializerMethodField()
     is_saved = serializers.SerializerMethodField()
 
@@ -74,10 +79,11 @@ class FeedSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
         fields = [
-            'id', 'title', 'description',
+            'id', 'title', 'description','project_name',
             'like_count', 'save_count', 'comment_count',
             'view_count', 'member_count','project_file',
-            'owner', 'is_liked', 'is_saved', 'created_at',
+            'owner','owner_profile', 'is_liked', 'is_saved', 'created_at',
+            'github_link','stage'
         ]
         read_only_fields=fields
 
@@ -88,6 +94,7 @@ from ..models import ProjectLike, Projectsave
 class HomeFeedSerializer(serializers.ModelSerializer):
     owner = InFeedProfile(source="owner.user_profile",read_only=True)
     owner_id=serializers.UUIDField(source="owner.id",read_only=True)
+    project_file = CompressedMediaFileField(read_only=True)
     is_liked = serializers.SerializerMethodField()
     is_saved = serializers.SerializerMethodField()
 
@@ -98,7 +105,7 @@ class HomeFeedSerializer(serializers.ModelSerializer):
                     'like_count', 'save_count', 'comment_count',
                     'view_count', 'member_count','project_file',
                     'owner', 'is_liked', 'is_saved', 'created_at',
-                    "owner_id"
+                    "owner_id", 'github_link','stage'
                 ]
         read_only_fields=fields
 

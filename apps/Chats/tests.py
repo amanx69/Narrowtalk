@@ -25,9 +25,10 @@ class ChatAPITestCase(APITestCase):
         self.chat_group = ChatGroup.objects.get(project=self.project)
         
   
-        GroupMember.objects.create(
+        self.groupe=GroupMember.objects.create(
             chat_group=self.chat_group,
             user=self.member,
+            is_active=True,
             role=GroupMember.ChatRole.MEMBER
         )
 
@@ -43,7 +44,7 @@ class ChatAPITestCase(APITestCase):
         self.client.force_authenticate(user=self.member)
         url = reverse('v1:groupe-list') 
         response = self.client.get(url)
-        print(response.data)
+        
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -110,3 +111,39 @@ class ChatAPITestCase(APITestCase):
         data = {"text": "Sent via API"}
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        
+    def test_list_of_group_member(self):
+        self.client.force_authenticate(user=self.member)
+        url=reverse("v1:group_members",args=[self.chat_group.id])
+        res= self.client.get(url)
+        self.assertEqual(res.status_code,status.HTTP_200_OK)
+    
+    def test_list_of_group_other_member(self):
+        self.client.force_authenticate(user=self.hacker)
+        url=reverse("v1:group_members",args=[self.chat_group.id])
+        res= self.client.get(url)
+        self.assertEqual(res.status_code,status.HTTP_403_FORBIDDEN)
+
+    def test_list_of_group_anoun(self):
+        url=reverse("v1:group_members",args=[self.chat_group.id])
+        res= self.client.get(url)
+        self.assertEqual(res.status_code,status.HTTP_401_UNAUTHORIZED)
+               
+               
+    def test_list_of_media(self):
+        self.client.force_authenticate(user=self.member)
+        url=reverse("v1:group_media",args=[self.chat_group.id])
+        res= self.client.get(url)
+        self.assertEqual(res.status_code,status.HTTP_200_OK)
+    
+    def test_list_of_media_other_member(self):
+        self.client.force_authenticate(user=self.hacker)
+        url=reverse("v1:group_media",args=[self.chat_group.id])
+        res= self.client.get(url)
+        self.assertEqual(res.status_code,status.HTTP_403_FORBIDDEN)
+
+    def test_list_of_media_anoun(self):
+        url=reverse("v1:group_media",args=[self.chat_group.id])
+        res= self.client.get(url)
+        self.assertEqual(res.status_code,status.HTTP_401_UNAUTHORIZED)
+               

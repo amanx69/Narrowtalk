@@ -37,7 +37,7 @@ class SignUp(generics.CreateAPIView):
 
     permission_classes=[permissions.AllowAny]
     serializer_class= SignUpSerializer
-    @method_decorator(ratelimit(key='ip', rate='3/m',method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='7/m',method='POST'))
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -51,7 +51,7 @@ class SignUp(generics.CreateAPIView):
 class LoginView(APIView):
     
     permission_classes=[permissions.AllowAny]
-    @method_decorator(ratelimit(key='ip', rate='3/m',method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='6/m',method='POST'))
     def post(self,request):
         serlizer= LoginSerlizer(data=request.data)
         serlizer.is_valid(raise_exception=True)
@@ -72,7 +72,7 @@ class LoginView(APIView):
 #! verify
 class VerifyEmail(APIView):
     permission_classes=[permissions.AllowAny]
-    @method_decorator(ratelimit(key='ip', rate='5/m',method='GET'))
+    @method_decorator(ratelimit(key='ip', rate='5/m',method='POST'))
     def post(self,request):
         ser= VerifyEmailSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -86,21 +86,27 @@ class VerifyEmail(APIView):
             ).first()
           
             if not Emailotp:
-                return Response({"message": "This OTP has expired. Please request a new one."},status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "error": "This OTP has expired. Please request a new one.",
+                    "message": "This OTP has expired. Please request a new one."
+                }, status=status.HTTP_400_BAD_REQUEST)
             if Emailotp.is_expire():
                 return Response({
+                    "error": "This OTP has expired. Please request a new one.",
                     "message": "This OTP has expired. Please request a new one."
-                },status.HTTP_400_BAD_REQUEST)
-            if Emailotp.attempts >=3:
+                }, status=status.HTTP_400_BAD_REQUEST)
+            if Emailotp.attempts >= 3:
                 return Response({
+                    "error": "Too many invalid attempts. Please request a new OTP.",
                     "message": "Too many invalid attempts. Please request a new OTP."
-                },status.HTTP_400_BAD_REQUEST)
-            if hash_otp!=Emailotp.otp:
-                Emailotp.attempts+=1
+                }, status=status.HTTP_400_BAD_REQUEST)
+            if hash_otp != Emailotp.otp:
+                Emailotp.attempts += 1
                 Emailotp.save(update_fields=['attempts'])
                 return Response({
+                    "error": "Invalid OTP entered. Please try again.",
                     "message": "Invalid OTP entered. Please try again."
-                },status.HTTP_400_BAD_REQUEST)
+                }, status=status.HTTP_400_BAD_REQUEST)
            
             Emailotp.user.is_verify = True
             Emailotp.used_it = True
@@ -184,22 +190,28 @@ class VerifyResetPasswordOtpView(APIView):
                 user__email=email
             ).first()
             if not Emailotp:
-                return Response({"message": "This OTP has expired. Please request a new one."},status.HTTP_400_BAD_REQUEST)
+                return Response({
+                    "error": "This OTP has expired. Please request a new one.",
+                    "message": "This OTP has expired. Please request a new one."
+                }, status=status.HTTP_400_BAD_REQUEST)
                 
             if Emailotp.is_expire():
                 return Response({
-                "message": "This OTP has expired. Please request a new one."
-                },status.HTTP_400_BAD_REQUEST)
-            if Emailotp.attempts >=3:
+                    "error": "This OTP has expired. Please request a new one.",
+                    "message": "This OTP has expired. Please request a new one."
+                }, status=status.HTTP_400_BAD_REQUEST)
+            if Emailotp.attempts >= 3:
                 return Response({
+                    "error": "Too many invalid attempts. Please request a new OTP.",
                     "message": "Too many invalid attempts. Please request a new OTP."
-                },status.HTTP_400_BAD_REQUEST)
-            if hash_otp!=Emailotp.otp:
-                Emailotp.attempts+=1
+                }, status=status.HTTP_400_BAD_REQUEST)
+            if hash_otp != Emailotp.otp:
+                Emailotp.attempts += 1
                 Emailotp.save(update_fields=['attempts'])
                 return Response({
+                    "error": "Invalid OTP entered. Please try again.",
                     "message": "Invalid OTP entered. Please try again."
-                    },status.HTTP_400_BAD_REQUEST)
+                }, status=status.HTTP_400_BAD_REQUEST)
                 
             Emailotp.used_it = True
             Emailotp.save(update_fields=["used_it"])
@@ -223,16 +235,21 @@ class ResetPasswordView(APIView):
         token_hash=hashlib.sha256(token.encode()).hexdigest()
         tokenobj=PasswordResetToken.objects.filter(token=token_hash).first()
         if not tokenobj:
-            return Response({"message":"invalid token"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "error": "Invalid reset token.",
+                "message": "Invalid reset token."
+            }, status=status.HTTP_400_BAD_REQUEST)
         if tokenobj.is_expired() or tokenobj.used_it:
             return Response({
+                "error": "This password reset session has expired. Please restart the process.",
                 "message": "This password reset session has expired. Please restart the process."
-            },status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_400_BAD_REQUEST)
             
-        if token_hash!=tokenobj.token:
+        if token_hash != tokenobj.token:
             return Response({
+                "error": "Invalid or manipulated reset token. Please restart the process.",
                 "message": "Invalid or manipulated reset token. Please restart the process."
-            },status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_400_BAD_REQUEST)
         tokenobj.user.set_password(password)
         tokenobj.user.save(update_fields=['password'])
         tokenobj.used_it=True
@@ -273,10 +290,12 @@ class GoogleLoginAuthView(APIView):
         ser.is_valid(raise_exception=True)
         token=ser.validated_data['token']
         try:
-            idinfo= id_token.verify_oauth2_token(
+            clock_skew = 21600 if settings.DEBUG else 60
+            idinfo = id_token.verify_oauth2_token(
                 token,
                 google_requests.Request(),
-                settings.GOOGLE_CLIENT_ID
+                settings.GOOGLE_CLIENT_ID,
+                clock_skew_in_seconds=clock_skew,
             )
             email=idinfo['email']
             with transaction.atomic():
@@ -302,7 +321,7 @@ class GoogleLoginAuthView(APIView):
             
             
         except ValueError:
-            return Response({"error": "Invalid or expired Google token"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Somthing Went worng please try again"}, status=status.HTTP_400_BAD_REQUEST)
             
             
             

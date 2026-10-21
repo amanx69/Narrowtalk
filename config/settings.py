@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
-from decouple import config
+from decouple import config ,Csv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -24,9 +24,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = ["*"]
+DEBUG = config('DEBUG', default=False, cast=bool)
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
 
 # Application definition
@@ -75,10 +74,7 @@ MIDDLEWARE = [
   
 ]
 
-#TODO remove in prod
-# SILKY_AUTHENTICATION = True
-# SILKY_AUTHORISATION = True
-# SILKY_PYTHON_PROFILER = True
+
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
@@ -99,6 +95,7 @@ TEMPLATES = [
 GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default="")
 
 
+WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
 CHANNEL_LAYERS = {
@@ -116,13 +113,14 @@ CHANNEL_LAYERS = {
 
 DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.postgresql_psycopg2',
+            'ENGINE': 'django.db.backends.postgresql',
             'NAME': config('name'),
             'USER': config('username', default=''),
             'PASSWORD': config('password', default=''),
             'HOST': config('host', default='localhost'),
             'PORT': config('port', default='5432'),
-            'CONN_MAX_AGE': 60,
+            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=60, cast=int),
+            'CONN_HEALTH_CHECKS': True,
         }
     }
 
@@ -133,6 +131,7 @@ REST_FRAMEWORK = {
             'rest_framework.parsers.MultiPartParser',
         ],
     'NON_FIELD_ERRORS_KEY': 'error', 
+    'EXCEPTION_HANDLER': 'core.exceptions.custom_exception_handler',
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
@@ -158,10 +157,13 @@ REST_FRAMEWORK = {
         'profile_like': '30/m',
         'remove_owner':"10/m",
         'feedback':"2/m",
-  
+        'transfer_ownership': '5/m',
+        'complete_project': '5/m',
+        'send_join_req':'20/m',
+        "accept_join_req":"20/m",
+        "reject_join_req":"20/m"
+        
     }
-   
-    
 }
 
 # Password validation
@@ -199,6 +201,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 
 AUTH_USER_MODEL= "account.User"
@@ -211,43 +216,43 @@ CELERY_RESULT_BACKEND = config('CELERY_BROKER_URL', default='redis://localhost:6
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 
-#! fro email
+#! for email
 
-EMAIL_BACKEND = config('email_b')
-EMAIL_HOST = config('email_h')
-EMAIL_USE_TLS = True
-EMAIL_PORT = config('email_port')
-EMAIL_HOST_USER = config('email_host')
-EMAIL_HOST_PASSWORD = config('email_pass')
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend' #TODO remove in prod
-
+EMAIL_BACKEND = config('email_b', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = config('email_h', default='smtp.gmail.com')
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_USE_SSL = config('EMAIL_USE_SSL', default=False, cast=bool)
+EMAIL_PORT = config('email_port', default=587, cast=int)
+EMAIL_HOST_USER = config('email_host', default='')
+EMAIL_HOST_PASSWORD = config('email_pass', default='')
+EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=10, cast=int)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default=config('email_host', default='noreply@narrow.com'))
+SERVER_EMAIL = config('SERVER_EMAIL', default=DEFAULT_FROM_EMAIL)
 
 
 from datetime import timedelta
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=5),#TODO CHABGE IN PRO
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=20),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 
-LIVEKIT_URL=config('LIVEKIT_URL')
-LIVEKIT_API_KEY=config('LIVEKIT_API_KEY')
-LIVEKIT_API_SECRET=config('LIVEKIT_API_SECRET')
-
 CORS_ALLOW_ALL_ORIGINS = True   # Allow all in dev (emulator, Postman, etc.)
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = [
-        # Android emulator
-    "http://127.0.0.1:8000",    # iOS simulator / browser
-    "http://localhost:8000",
-]
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://127.0.0.1:8000,http://localhost:8000',
+    cast=Csv(),
+)
 
 
 
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis:{config('Redis_caches')}",
+        "LOCATION": f"redis:{config('Redis_caches', default='//127.0.0.1:6379/1')}",
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         },
@@ -257,7 +262,7 @@ CACHES = {
 
 CELERY_BEAT_SCHEDULE = {
     'recompute-best-ideas': {
-        'task': 'Feed.api.task.recompute_best_ideas_cache',
+        'task': 'apps.Feed.api.task.recompute_best_ideas_cache',
         'schedule': 600.0,  
     },
 }
@@ -275,3 +280,59 @@ STORAGES = {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Narrow API",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "DISABLE_ERRORS_AND_WARNINGS": True,
+}
+
+USE_HTTPS = config("USE_HTTPS", default=False, cast=bool)
+
+SILENCED_SYSTEM_CHECKS = [
+    "drf_spectacular.W001",
+    "drf_spectacular.W002",
+]
+if not USE_HTTPS:
+    SILENCED_SYSTEM_CHECKS += [
+        "security.W004",
+        "security.W008",
+        "security.W012",
+        "security.W016",
+    ]
+
+if not DEBUG:
+    REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = [
+        "rest_framework.renderers.JSONRenderer",
+    ]
+    USE_X_FORWARDED_HOST = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SESSION_COOKIE_SECURE = USE_HTTPS
+    CSRF_COOKIE_SECURE = USE_HTTPS
+    if USE_HTTPS:
+        SECURE_SSL_REDIRECT = True
+        SECURE_HSTS_SECONDS = 31536000
+        SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+        SECURE_HSTS_PRELOAD = True
+
+# ── Sentry Error Monitoring & APM ──────────────────────────────────────────────
+SENTRY_DSN = config('SENTRY_DSN', default='')
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.redis import RedisIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(),
+            CeleryIntegration(),
+            RedisIntegration(),
+        ],
+        traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.2, cast=float),
+        send_default_pii=False,
+        environment=config('ENVIRONMENT', default='development' if DEBUG else 'production'),
+    )

@@ -1,0 +1,22 @@
+[Unit]
+Description=Uvicorn daemon for Narrow WebSockets (ASGI - Chat & Notifications)
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/authsystem/backend
+EnvironmentFile=/home/ubuntu/authsystem/backend/.env
+ExecStart=/home/ubuntu/authsystem/.venv/bin/uvicorn \
+    config.asgi:application \
+    --host 127.0.0.1 \
+    --port 8001 \
+    --workers 2 \
+    --ws-ping-interval 20 \
+    --ws-ping-timeout 20
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+

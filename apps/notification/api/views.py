@@ -14,17 +14,27 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return Notification.objects.filter(
             recipient=self.request.user
-        ).select_related("sender", "project")
+        ).exclude(notif_type=Notification.Type.NEW_MESSAGE).select_related("sender", "project")
 
     @action(detail=False, methods=["get"])
     def unread_count(self, request):
-        count = request.user.notifications.filter(is_read=False).count()
+        count = request.user.notifications.filter(
+            is_read=False
+        ).exclude(notif_type=Notification.Type.NEW_MESSAGE).count()
         return Response({"unread_count": count})
     
     @action(detail=False, methods=["get"])
     def unread_notification(self, request):
-        notification = request.user.notifications.filter(is_read=False)
-        ser=self.get_serializer(data=notification,many=True)
+        notification = request.user.notifications.filter(
+            is_read=False
+        ).exclude(notif_type=Notification.Type.NEW_MESSAGE)
+        
+        page = self.paginate_queryset(notification)
+        if page is not None:
+            ser = self.get_serializer(page, many=True)
+            return self.get_paginated_response(ser.data)
+        
+        ser = self.get_serializer(notification, many=True)
         return Response({"data": ser.data})
 
     @action(detail=True, methods=["post"])

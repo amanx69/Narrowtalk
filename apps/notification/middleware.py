@@ -18,11 +18,37 @@ def get_user(token):
 
 
 class JWTAuthMiddleware(BaseMiddleware):
+    """
+    Secure JWT Authentication Middleware for Channels WebSockets.
+    Authenticates via:
+    1. HTTP Authorization Header ('Bearer <token>') - Most Secure
+    2. Sec-WebSocket-Protocol Header
+    3. Query parameter fallback ('?token=<token>') for backward compatibility
+    """
     async def __call__(self, scope, receive, send):
-        query_string = scope.get("query_string", b"").decode()
-        params = parse_qs(query_string)
-        token_list = params.get("token")
-        token = token_list[0] if token_list else None
+        token = None
+
+        # 1. Extract from Authorization Header (Never logged in URL query strings)
+        headers = dict(scope.get("headers", []))
+        auth_header = headers.get(b"authorization", b"").decode("utf-8")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        elif auth_header:
+            token = auth_header.strip()
+
+        # 2. Extract from Sec-WebSocket-Protocol Header
+        if not token:
+            subprotocols = headers.get(b"sec-websocket-protocol", b"").decode("utf-8")
+            if subprotocols:
+                token = subprotocols.split(",")[0].strip()
+
+        # 3. Fallback to query parameter (?token=...)
+        if not token:
+            query_string = scope.get("query_string", b"").decode("utf-8")
+            params = parse_qs(query_string)
+            token_list = params.get("token")
+            if token_list:
+                token = token_list[0]
+
         scope["user"] = await get_user(token) if token else AnonymousUser()
         return await super().__call__(scope, receive, send)
-
