@@ -3,11 +3,11 @@ from .models import GroupMember ,ChatGroup
 
 
 
-def join_in_project_groupe(project,user,request):
+def join_in_project_groupe(project,user,request=None):
     
     try:
         chat_group = ChatGroup.objects.get(project=project)
-        if chat_group.project.owner == request.user:
+        if request is None or chat_group.project.owner == request.user or user == request.user:
             GroupMember.objects.get_or_create(
                 chat_group=chat_group,
                 user=user,
